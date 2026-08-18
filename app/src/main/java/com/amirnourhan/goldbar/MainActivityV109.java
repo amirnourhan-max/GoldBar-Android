@@ -164,8 +164,6 @@ public class MainActivityV109 extends MainActivityV108 {
                 .append(" | مقدار بار مصرفی ").append(n(lower.totalAlloyRequired)).append("g")
                 .append(" | نقره مورد نیاز ").append(n(lower.silverRequired)).append("g")
                 .append(" | بار بدون نقره ").append(n(lower.nonSilverRequired)).append("g")
-                .append(" | ۰.۴٪ کل وزن ").append(n(lower.fourPerThousand)).append("g")
-                .append(" | بار نهایی دیگر ").append(n(lower.finalOtherAlloy)).append("g")
                 .append(" | وزن پس از بار ").append(n(lower.totalAfterAlloy)).append("g")
                 .append("\n");
 
