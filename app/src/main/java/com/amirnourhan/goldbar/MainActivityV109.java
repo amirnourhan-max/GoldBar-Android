@@ -8,6 +8,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import org.json.JSONArray;
@@ -24,10 +25,11 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Gold Bar v1.0.9 report refinement:
+ * Gold Bar v1.0.9 report/UI refinement:
  * - compact one-page text report
  * - raw entries + final results only
  * - no formulas, weighted sums, differences, or calculation-method details
+ * - hides 0.4% total-weight and final-other-alloy fields from the app UI
  */
 public class MainActivityV109 extends MainActivityV108 {
     private static final int REQUEST_SAVE_SIMPLE_REPORT = 5109;
@@ -41,7 +43,39 @@ public class MainActivityV109 extends MainActivityV108 {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        removeObsoleteAlloyFields();
         replaceReportAction();
+    }
+
+    private void removeObsoleteAlloyFields() {
+        removeMetricByLabel("۰.۴٪ کل وزن (g)");
+        removeMetricByLabel("بار نهایی دیگر (g)");
+    }
+
+    private void removeMetricByLabel(String label) {
+        TextView text = findTextExact(findViewById(android.R.id.content), label);
+        if (text == null || !(text.getParent() instanceof View)) return;
+        View metricBox = (View) text.getParent();
+        if (metricBox.getParent() instanceof ViewGroup) {
+            ((ViewGroup) metricBox.getParent()).removeView(metricBox);
+        }
+    }
+
+    private TextView findTextExact(View root, String text) {
+        if (root instanceof TextView) {
+            CharSequence value = ((TextView) root).getText();
+            if (value != null && text.contentEquals(value)) {
+                return (TextView) root;
+            }
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                TextView found = findTextExact(group.getChildAt(i), text);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     private void replaceReportAction() {
