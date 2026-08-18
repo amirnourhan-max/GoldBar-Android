@@ -3,8 +3,10 @@ package com.amirnourhan.goldbar;
 import java.util.List;
 
 /**
- * Exact business logic ported from Golde Bar1-1.xlsx.
- * Assays are expressed in per-thousand (e.g. 747, 995).
+ * Gold assay calculations ported from "Golde Bar edite.xlsx".
+ * Assays are per-thousand (e.g. 747, 995).
+ *
+ * Important: raising and lowering assay are two different mixing equations.
  */
 public final class GoldCalculator {
     private GoldCalculator() {}
@@ -71,7 +73,7 @@ public final class GoldCalculator {
         return new Summary(count, weight, weighted, avg);
     }
 
-    /** Excel: ROUNDDOWN(number, digits), which truncates toward zero. */
+    /** Excel ROUNDDOWN(number,digits): truncation toward zero. */
     public static double roundDownTowardZero(double value, int digits) {
         if (!Double.isFinite(value)) return Double.NaN;
         double factor = Math.pow(10.0, digits);
@@ -81,43 +83,60 @@ public final class GoldCalculator {
     }
 
     /**
-     * Excel Table1:
-     * difference = castingAssay - averageAssay
-     * denominator = barAssay - castingAssay
-     * requiredBar = ROUNDDOWN(weight * difference / denominator, 1)
+     * RAISE assay using a high-assay bar:
+     *
+     * (W*A + X*H) / (W+X) = T
+     * X = W*(T-A)/(H-T)
+     *
+     * Workbook Table1 uses ROUNDDOWN(...,1).
+     * If A >= T, raising is not needed and X is zero (never negative).
      */
-    public static Adjustment requiredHighAssayBar(Summary s, double castingAssay, double barAssay) {
-        if (s.weight <= 0 || !Double.isFinite(s.averageAssay)) {
+    public static Adjustment requiredHighAssayBar(Summary s, double targetAssay, double barAssay) {
+        if (s.weight <= 0 || !Double.isFinite(s.averageAssay)
+                || targetAssay <= 0 || barAssay <= targetAssay) {
             return new Adjustment(Double.NaN, Double.NaN, Double.NaN);
         }
-        double diff = castingAssay - s.averageAssay;
-        double denominator = barAssay - castingAssay;
-        if (denominator == 0.0) {
-            return new Adjustment(diff, denominator, Double.NaN);
+
+        double differenceNeeded = targetAssay - s.averageAssay;
+        double denominator = barAssay - targetAssay;
+
+        if (differenceNeeded <= 0.0) {
+            return new Adjustment(0.0, denominator, 0.0);
         }
-        double required = roundDownTowardZero((s.weight * diff) / denominator, 1);
-        return new Adjustment(diff, denominator, required);
+
+        double required = roundDownTowardZero(
+                (s.weight * differenceNeeded) / denominator, 1);
+        return new Adjustment(differenceNeeded, denominator, Math.max(0.0, required));
     }
 
     /**
-     * Excel Table14:
-     * total alloy = weight * avgAssay / castingAssay - weight
-     * silver = silverPercent / 100 * total alloy
-     * 0.4% item = global total weight * 0.004 (matches workbook N3*0.004)
-     * final other = total alloy - silver - 0.4% item
+     * LOWER assay by adding zero-gold alloy (the exact assumption used by Table14):
+     *
+     * (W*A) / (W+X) = T
+     * X = W*A/T - W = W*(A-T)/T
+     *
+     * If A <= T, lowering is not needed and every output is zero.
      */
-    public static Alloy requiredAlloy(Summary selected, double castingAssay, double silverPercent,
+    public static Alloy requiredAlloy(Summary s, double targetAssay, double silverPercent,
                                       double globalWeight) {
-        if (selected.weight <= 0 || !Double.isFinite(selected.averageAssay) || castingAssay == 0.0) {
-            return new Alloy(Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN);
+        if (s.weight <= 0 || !Double.isFinite(s.averageAssay)
+                || targetAssay <= 0 || silverPercent < 0) {
+            return new Alloy(Double.NaN, Double.NaN, Double.NaN,
+                    Double.NaN, Double.NaN, Double.NaN);
         }
-        double total = selected.weight * selected.averageAssay / castingAssay - selected.weight;
+
+        if (s.averageAssay <= targetAssay) {
+            return new Alloy(0.0, 0.0, 0.0, 0.0, 0.0, s.weight);
+        }
+
+        double total = s.weight * s.averageAssay / targetAssay - s.weight;
         double silver = (silverPercent / 100.0) * total;
-        double other = total - silver;
-        double fourPerThousand = globalWeight * 0.004;
+        double nonSilver = total - silver;
+        double fourPerThousand = Math.max(0.0, globalWeight) * 0.004;
         double finalOther = total - silver - fourPerThousand;
-        double after = selected.weight + total;
-        return new Alloy(total, silver, other, fourPerThousand, finalOther, after);
+        double after = s.weight + total;
+
+        return new Alloy(total, silver, nonSilver, fourPerThousand, finalOther, after);
     }
 
     public static double split3679(double base) {
