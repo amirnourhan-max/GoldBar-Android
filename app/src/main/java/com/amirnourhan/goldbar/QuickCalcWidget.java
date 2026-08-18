@@ -43,21 +43,30 @@ public class QuickCalcWidget extends AppWidgetProvider {
 
         RemoteViews rv = new RemoteViews(
                 context.getPackageName(), R.layout.widget_quick_calc);
+
+        rv.setTextViewText(
+                R.id.widget_split_base,
+                "عدد پایه: " + n(splitBase));
         rv.setTextViewText(
                 R.id.widget_split_result,
-                "پایه " + n(splitBase)
-                        + "  |  " + n(split)
-                        + " / " + n(splitBase - split));
+                "۳۶.۷۹٪  " + n(split)
+                        + "  •  ۶۳.۲۱٪  " + n(splitBase - split));
+
+        rv.setTextViewText(
+                R.id.widget_correction_inputs,
+                "وزن " + n(corrWeight) + "g"
+                        + "  •  هدف " + n(corrTarget)
+                        + "  •  افت " + n(corrDrop));
         rv.setTextViewText(
                 R.id.widget_correction_result,
-                "افزوده " + n(add)
-                        + " g  |  جمع " + n(corrWeight + add) + " g");
+                "بار افزوده " + n(add) + "g"
+                        + "  •  جمع وزن " + n(corrWeight + add) + "g");
 
         Intent openApp = new Intent(
                 context, MainActivityV112.class);
         PendingIntent openPi = PendingIntent.getActivity(
                 context,
-                1120,
+                1130,
                 openApp,
                 PendingIntent.FLAG_UPDATE_CURRENT
                         | PendingIntent.FLAG_IMMUTABLE);
@@ -66,10 +75,10 @@ public class QuickCalcWidget extends AppWidgetProvider {
         Intent splitIntent = new Intent(
                 context, QuickCalcActivity.class)
                 .putExtra("mode", "split")
-                .setAction("com.amirnourhan.goldbar.WIDGET_SPLIT");
+                .setAction("com.amirnourhan.goldbar.WIDGET_SPLIT_V113");
         PendingIntent splitPi = PendingIntent.getActivity(
                 context,
-                1121,
+                1131,
                 splitIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT
                         | PendingIntent.FLAG_IMMUTABLE);
@@ -78,10 +87,10 @@ public class QuickCalcWidget extends AppWidgetProvider {
         Intent correctionIntent = new Intent(
                 context, QuickCalcActivity.class)
                 .putExtra("mode", "correction")
-                .setAction("com.amirnourhan.goldbar.WIDGET_CORRECTION");
+                .setAction("com.amirnourhan.goldbar.WIDGET_CORRECTION_V113");
         PendingIntent correctionPi = PendingIntent.getActivity(
                 context,
-                1122,
+                1132,
                 correctionIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT
                         | PendingIntent.FLAG_IMMUTABLE);
