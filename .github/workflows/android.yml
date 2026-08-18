@@ -48,15 +48,22 @@ jobs:
             verify/Verify.java
           java -cp build/logic-test Verify
 
-      - name: Verify UI and keyboard implementation
+      - name: Verify v1.0.6 implementation
         run: |
           ! grep -q "buildGuideCard" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
           ! grep -q "inputGuide" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
-          grep -q "raiseTargetAssay" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
-          grep -q "lowerTargetAssay" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
           grep -q "WindowInsets.Type.ime" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
-          grep -q "SOFT_INPUT_ADJUST_RESIZE" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
+          grep -q "GOLD BAR (by:Amirnourhan)" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106.java
+          grep -q "4mirnourhan" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106.java
+          grep -q "محاسبه سریع" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106.java
+          grep -q "ذخیره گزارش کامل" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106.java
+          grep -q "MediaStore.Downloads" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106.java
+          grep -q "class QuickCalcWidget" app/src/main/java/com/amirnourhan/goldbar/QuickCalcWidget.java
+          grep -q "class QuickCalcActivity" app/src/main/java/com/amirnourhan/goldbar/QuickCalcActivity.java
+          grep -q "quick_calc_widget_info" app/src/main/AndroidManifest.xml
           grep -q 'windowSoftInputMode="adjustResize"' app/src/main/AndroidManifest.xml
+          test -s app/src/main/res/layout/widget_quick_calc.xml
+          test -s app/src/main/res/xml/quick_calc_widget_info.xml
 
       - name: Build debug APK with official Android toolchain
         run: gradle --no-daemon --stacktrace :app:assembleDebug
@@ -87,7 +94,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-v1.0.5-debug-apk
+          name: GoldBar-v1.0.6-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
@@ -96,7 +103,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-smoke-test-diagnostics-v105
+          name: GoldBar-smoke-test-diagnostics-v106
           path: |
             build/logcat.txt
             build/start.xml
