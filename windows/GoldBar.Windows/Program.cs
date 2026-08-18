@@ -19,6 +19,7 @@ internal static class Program
         try
         {
             main = new DesktopMainForm();
+            DesktopLayoutFixer.Attach(main);
         }
         catch (Exception ex)
         {
@@ -31,8 +32,6 @@ internal static class Program
             return;
         }
 
-        // Keep the splash visible long enough to avoid a blank/late-start feeling,
-        // while still opening the main window as soon as it is ready.
         while (watch.ElapsedMilliseconds < 420)
         {
             Application.DoEvents();
