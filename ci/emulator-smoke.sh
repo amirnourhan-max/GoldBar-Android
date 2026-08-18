@@ -16,7 +16,7 @@ grep -q 'com.amirnourhan.goldbar/.QuickCalcWidget' build/query-receivers.txt
 # Check AppWidgetService before and after launching the app.
 adb shell dumpsys appwidget > build/appwidget-before.txt
 adb shell am force-stop com.amirnourhan.goldbar
-adb shell am start -W -n com.amirnourhan.goldbar/.MainActivityV108
+adb shell am start -W -n com.amirnourhan.goldbar/.MainActivityV109
 sleep 5
 adb shell dumpsys appwidget > build/appwidget-after.txt
 
