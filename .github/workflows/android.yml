@@ -72,27 +72,19 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
-            set -e
             adb logcat -c
             adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb shell am force-stop com.amirnourhan.goldbar || true
+            adb shell am force-stop com.amirnourhan.goldbar
             adb shell am start -W -n com.amirnourhan.goldbar/.MainActivity
             sleep 5
             adb logcat -d > build/logcat.txt
-            PID="$(adb shell pidof com.amirnourhan.goldbar | tr -d '\r')"
-            if [ -z "$PID" ]; then
-              echo "Gold Bar process is not running after launch"
-              cat build/logcat.txt
-              exit 1
-            fi
+            adb shell pidof com.amirnourhan.goldbar | tr -d '\r' > build/pid.txt
+            test -s build/pid.txt
             adb shell uiautomator dump /sdcard/window.xml
             adb pull /sdcard/window.xml build/window.xml
             grep -q "GOLD BAR" build/window.xml
-            if grep -E "FATAL EXCEPTION: main|Process: com\.amirnourhan\.goldbar" build/logcat.txt; then
-              echo "Fatal exception detected"
-              exit 1
-            fi
-            echo "Startup smoke test PASS (pid=$PID)"
+            ! grep -E "FATAL EXCEPTION: main|Process: com\.amirnourhan\.goldbar" build/logcat.txt
+            cat build/pid.txt
 
       - name: Upload APK
         if: always()
@@ -111,5 +103,6 @@ jobs:
           path: |
             build/logcat.txt
             build/window.xml
+            build/pid.txt
           if-no-files-found: ignore
           retention-days: 14
