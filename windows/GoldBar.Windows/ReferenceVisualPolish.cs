@@ -41,11 +41,15 @@ internal static class ReferenceVisualPolish
             }
             if (title is not null)
             {
+                // RightToLeft=No prevents WinForms from mirroring MiddleLeft. Persian
+                // text itself still renders correctly through Unicode bidi rules.
+                title.RightToLeft = RightToLeft.No;
                 title.TextAlign = ContentAlignment.MiddleLeft;
                 title.Padding = new Padding(18, 0, 0, 0);
             }
             if (subtitle is not null)
             {
+                subtitle.RightToLeft = RightToLeft.No;
                 subtitle.TextAlign = ContentAlignment.MiddleLeft;
                 subtitle.Padding = new Padding(18, 0, 0, 0);
             }
@@ -101,7 +105,6 @@ internal static class ReferenceVisualPolish
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(Color.Transparent);
 
-        // soft glow
         using (var glow = new SolidBrush(Color.FromArgb(35, 255, 192, 35)))
             g.FillEllipse(glow, 38, 18, width - 76, height - 28);
 
