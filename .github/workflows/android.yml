@@ -48,7 +48,7 @@ jobs:
             verify/Verify.java
           java -cp build/logic-test Verify
 
-      - name: Verify v1.0.6 implementation
+      - name: Verify v1.0.7 implementation
         run: |
           ! grep -q "buildGuideCard" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
           ! grep -q "inputGuide" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
@@ -58,10 +58,12 @@ jobs:
           grep -q "محاسبه سریع" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106Fixed.java
           grep -q "ذخیره گزارش کامل" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106Fixed.java
           grep -q "ACTION_CREATE_DOCUMENT" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106Fixed.java
-          grep -q "current != null" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106Fixed.java
+          grep -q "summary-after-alloy" app/src/main/java/com/amirnourhan/goldbar/MainActivityV107.java
+          grep -q "وزن پس از بار (g)" app/src/main/java/com/amirnourhan/goldbar/MainActivityV107.java
           grep -q "class QuickCalcWidget" app/src/main/java/com/amirnourhan/goldbar/QuickCalcWidget.java
+          grep -q "MainActivityV107" app/src/main/java/com/amirnourhan/goldbar/QuickCalcWidget.java
           grep -q "class QuickCalcActivity" app/src/main/java/com/amirnourhan/goldbar/QuickCalcActivity.java
-          grep -q "MainActivityV106Fixed" app/src/main/AndroidManifest.xml
+          grep -q "MainActivityV107" app/src/main/AndroidManifest.xml
           grep -q "quick_calc_widget_info" app/src/main/AndroidManifest.xml
           grep -q 'windowSoftInputMode="adjustResize"' app/src/main/AndroidManifest.xml
           test -s app/src/main/res/layout/widget_quick_calc.xml
@@ -96,7 +98,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-v1.0.6-debug-apk
+          name: GoldBar-v1.0.7-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
@@ -105,7 +107,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-smoke-test-diagnostics-v106
+          name: GoldBar-smoke-test-diagnostics-v107
           path: |
             build/logcat-initial.txt
             build/logcat.txt
