@@ -16,7 +16,7 @@ class MarketRepository(private val context: Context) {
 
         runCatching { TelegramPublicSource().fetch() }
             .onSuccess { t ->
-                telegramOk = listOf(t.abshodeh, t.gram, t.coinCash, t.coinHavaleh).any { it != null }
+                telegramOk = t.hasAnyQuote()
                 snapshot = snapshot.copy(
                     abshodeh = t.abshodeh ?: snapshot.abshodeh,
                     gramTelegram = t.gram ?: snapshot.gramTelegram,
@@ -29,7 +29,7 @@ class MarketRepository(private val context: Context) {
         if (apiKey.isNotBlank()) {
             runCatching { TalaApiSource().fetch(apiKey) }
                 .onSuccess { t ->
-                    talaOk = listOf(t.gold18, t.usd, t.eur).any { it != null }
+                    talaOk = listOf(t.gold18, t.usd, t.eur).any { it?.value != null }
                     snapshot = snapshot.copy(
                         gold18 = t.gold18 ?: snapshot.gold18,
                         usd = t.usd ?: snapshot.usd,
@@ -39,14 +39,18 @@ class MarketRepository(private val context: Context) {
         }
 
         if (snapshot.gold18.value == null && snapshot.gramTelegram.value != null) {
-            snapshot = snapshot.copy(gold18 = snapshot.gramTelegram.copy(label = "طلای ۱۸ عیار"))
+            snapshot = snapshot.copy(
+                gold18 = snapshot.gramTelegram.copy(label = "طلای ۱۸ عیار", source = "JUST")
+            )
         }
 
+        val anyFreshData = telegramOk || talaOk
         snapshot = snapshot.copy(
-            updatedAt = System.currentTimeMillis(),
+            updatedAt = if (anyFreshData) System.currentTimeMillis() else snapshot.updatedAt,
             telegramOk = telegramOk,
             talaOk = talaOk
         )
+
         store.save(snapshot)
         MarketWidget().updateAll(context)
         snapshot

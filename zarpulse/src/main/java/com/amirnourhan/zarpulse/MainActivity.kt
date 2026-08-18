@@ -56,6 +56,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         MarketWorker.schedule(this)
+        MarketWorker.refreshNow(this)
         setContent {
             ZarPulseTheme {
                 MarketScreen()
@@ -72,7 +73,7 @@ class MainActivity : ComponentActivity() {
         var snapshot by remember { mutableStateOf(store.load()) }
         var apiKey by remember { mutableStateOf(store.talaApiKey) }
         var loading by remember { mutableStateOf(false) }
-        var message by remember { mutableStateOf("برای دریافت دلار و طلای Tala، کلید API را وارد کنید.") }
+        var message by remember { mutableStateOf("JUST بدون کلید API کار می‌کند؛ Tala برای دلار/یورو نیاز به x-api-key دارد.") }
 
         fun refresh() {
             scope.launch {
@@ -92,7 +93,7 @@ class MainActivity : ComponentActivity() {
         }
 
         LaunchedEffect(Unit) {
-            if (snapshot.updatedAt == 0L) refresh()
+            refresh()
         }
 
         LazyColumn(
@@ -185,7 +186,7 @@ class MainActivity : ComponentActivity() {
                 Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 4.dp))
                 val time = if (snapshot.updatedAt > 0) SimpleDateFormat("yyyy/MM/dd  HH:mm:ss", Locale.getDefault()).format(Date(snapshot.updatedAt)) else "—"
                 Text("آخرین بروزرسانی: $time", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                Text("منبع آبشده/سکه: JUST @abshdh   •   منبع API: Tala.ir", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                Text("منبع آبشده/گرم/سکه: JUST @abshdh   •   دلار/یورو: Tala.ir API", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                 Spacer(Modifier.height(28.dp))
             }
         }
