@@ -3,6 +3,8 @@ name: Build Python CSS Windows installer
 on:
   push:
     branches: [ feature/windows-python-css-v160 ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
