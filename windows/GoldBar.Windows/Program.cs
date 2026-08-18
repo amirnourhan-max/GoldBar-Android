@@ -33,6 +33,7 @@ internal static class Program
             main = new ModernMainForm();
             ModernLayoutPolish.Attach(main);
             SettingsDrawerLayoutFix.Attach(main);
+            MockupFixedLayout.Attach(main);
             ApplyTestSize(main);
 
             var page = Environment.GetEnvironmentVariable("GOLDBAR_UI_PAGE");
@@ -127,7 +128,7 @@ internal static class Program
 
         main.Shown += (_, _) =>
         {
-            var timer = new System.Windows.Forms.Timer { Interval = 1800 };
+            var timer = new System.Windows.Forms.Timer { Interval = 1900 };
             timer.Tick += (_, _) =>
             {
                 timer.Stop();
