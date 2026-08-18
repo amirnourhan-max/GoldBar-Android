@@ -30,13 +30,12 @@ jobs:
       - name: Verify Windows scale/settings implementation
         shell: pwsh
         run: |
-          Select-String -Path windows/GoldBar.Windows/MainForm.cs -Pattern 'Keys.Up' -Quiet | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw 'Up-arrow scale read missing' }
-          Select-String -Path windows/GoldBar.Windows/MainForm.cs -Pattern 'ذخیره گزارش کامل' -Quiet | Out-Null
-          Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'Baud Rate' -Quiet | Out-Null
-          Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'Flow Control' -Quiet | Out-Null
-          Select-String -Path windows/GoldBar.Windows/ScaleReader.cs -Pattern 'SerialPort' -Quiet | Out-Null
-          Select-String -Path windows/GoldBar.Windows/AppSettings.cs -Pattern 'ReportFolder' -Quiet | Out-Null
+          if (!(Select-String -Path windows/GoldBar.Windows/MainForm.cs -Pattern 'Keys.Up' -Quiet)) { throw 'Up-arrow scale read missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/MainForm.cs -Pattern 'ذخیره گزارش کامل' -Quiet)) { throw 'Report button missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'Baud Rate' -Quiet)) { throw 'Baud setting missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'Flow Control' -Quiet)) { throw 'Flow control setting missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/ScaleReader.cs -Pattern 'SerialPort' -Quiet)) { throw 'SerialPort support missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/AppSettings.cs -Pattern 'ReportFolder' -Quiet)) { throw 'Report folder setting missing' }
 
       - name: Build Windows desktop app
         run: dotnet build windows/GoldBar.Windows/GoldBar.Windows.csproj -c Release
