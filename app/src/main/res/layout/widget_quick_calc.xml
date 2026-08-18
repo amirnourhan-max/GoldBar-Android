@@ -35,8 +35,7 @@
     <LinearLayout
         android:id="@+id/widget_split_card"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="10dp"
         android:background="@drawable/widget_item_background">
@@ -62,15 +61,11 @@
             android:paddingTop="4dp" />
     </LinearLayout>
 
-    <Space
-        android:layout_width="1dp"
-        android:layout_height="7dp" />
-
     <LinearLayout
         android:id="@+id/widget_correction_card"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="7dp"
         android:orientation="vertical"
         android:padding="10dp"
         android:background="@drawable/widget_item_background">
