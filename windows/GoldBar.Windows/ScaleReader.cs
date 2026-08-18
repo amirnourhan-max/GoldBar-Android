@@ -10,6 +10,8 @@ public sealed class ScaleReader : IDisposable
     private readonly object _gate = new();
     private readonly StringBuilder _buffer = new();
     private readonly SemaphoreSlim _startGate = new(1, 1);
+    private readonly Queue<double> _stableSamples = new();
+
     private SerialPort? _port;
     private AppSettings? _settings;
     private TaskCompletionSource<double>? _nextWeight;
@@ -21,6 +23,7 @@ public sealed class ScaleReader : IDisposable
 
     public bool IsOpen => _port?.IsOpen == true;
     public double? LastWeight { get; private set; }
+    public double? LastRawWeight { get; private set; }
     public string? LastStartError { get; private set; }
 
     public void ApplySettings(AppSettings settings, bool startIfAuto)
@@ -28,8 +31,8 @@ public sealed class ScaleReader : IDisposable
         Stop();
         _settings = settings;
         LastStartError = null;
+        lock (_gate) _stableSamples.Clear();
 
-        // Never block the UI while Windows opens a COM port.
         if (startIfAuto && settings.AutoRead)
             _ = StartAsync(_lifetime.Token);
     }
@@ -58,7 +61,6 @@ public sealed class ScaleReader : IDisposable
         }
     }
 
-    // Kept for the Settings test button; normal app flow uses StartAsync.
     public void Start() => StartCore();
 
     private void StartCore()
@@ -125,6 +127,7 @@ public sealed class ScaleReader : IDisposable
             {
                 _port = null;
                 _buffer.Clear();
+                _stableSamples.Clear();
                 _nextWeight?.TrySetCanceled();
                 _nextWeight = null;
             }
@@ -136,15 +139,8 @@ public sealed class ScaleReader : IDisposable
         if (_settings is null)
             throw new InvalidOperationException("تنظیمات ترازو مشخص نشده است.");
 
-        // Opening COM ports may be slow on some USB/serial adapters. Do it off the UI thread.
         if (_port?.IsOpen != true)
             await StartAsync(cancellationToken).ConfigureAwait(false);
-
-        // If the scale is continuously streaming and we just received a fresh value,
-        // return it immediately instead of making the operator wait for another frame.
-        var current = LastWeight;
-        if (current.HasValue && !_settings.SendQueryOnUpArrow)
-            return current.Value;
 
         var tcs = new TaskCompletionSource<double>(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_gate) _nextWeight = tcs;
@@ -169,11 +165,17 @@ public sealed class ScaleReader : IDisposable
 
         try
         {
-            return await tcs.Task.ConfigureAwait(false);
+            var value = await tcs.Task.ConfigureAwait(false);
+            PublishAccepted(value);
+            return value;
         }
         catch (OperationCanceledException)
         {
-            if (LastWeight.HasValue) return LastWeight.Value;
+            if (LastRawWeight.HasValue)
+            {
+                PublishAccepted(LastRawWeight.Value);
+                return LastRawWeight.Value;
+            }
             throw new TimeoutException("در زمان تعیین‌شده وزنی از ترازو دریافت نشد.");
         }
         finally
@@ -240,6 +242,7 @@ public sealed class ScaleReader : IDisposable
             if (string.IsNullOrEmpty(text)) return;
             RawReceived?.Invoke(text);
 
+            var parsedValues = new List<double>();
             lock (_gate)
             {
                 _buffer.Append(text);
@@ -259,15 +262,18 @@ public sealed class ScaleReader : IDisposable
                     var frame = parts[i].Trim();
                     if (frame.Length == 0) continue;
                     if (TryParseWeight(frame, settings, out var value))
-                        PublishWeight(value);
+                        parsedValues.Add(value);
                 }
 
                 if (_buffer.Length >= 6 && TryParseWeight(_buffer.ToString(), settings, out var buffered))
                 {
-                    PublishWeight(buffered);
+                    parsedValues.Add(buffered);
                     _buffer.Clear();
                 }
             }
+
+            foreach (var value in parsedValues)
+                HandleParsedWeight(value, settings);
         }
         catch (Exception ex)
         {
@@ -275,11 +281,46 @@ public sealed class ScaleReader : IDisposable
         }
     }
 
-    private void PublishWeight(double value)
+    private void HandleParsedWeight(double value, AppSettings settings)
+    {
+        LastRawWeight = value;
+
+        TaskCompletionSource<double>? waiter;
+        lock (_gate) waiter = _nextWeight;
+        waiter?.TrySetResult(value); // manual ↑ is immediate and never waits for stability filtering.
+
+        if (!settings.AutoRead) return;
+
+        if (!settings.StableAutoReadOnly)
+        {
+            PublishAccepted(value);
+            return;
+        }
+
+        double? accepted = null;
+        lock (_gate)
+        {
+            _stableSamples.Enqueue(value);
+            while (_stableSamples.Count > settings.StableSampleCount)
+                _stableSamples.Dequeue();
+
+            if (_stableSamples.Count >= settings.StableSampleCount)
+            {
+                var min = _stableSamples.Min();
+                var max = _stableSamples.Max();
+                if (max - min <= settings.StableToleranceGrams)
+                    accepted = _stableSamples.Average();
+            }
+        }
+
+        if (accepted.HasValue)
+            PublishAccepted(accepted.Value);
+    }
+
+    private void PublishAccepted(double value)
     {
         LastWeight = value;
         WeightReceived?.Invoke(value);
-        _nextWeight?.TrySetResult(value);
     }
 
     public void Dispose()
