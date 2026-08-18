@@ -34,6 +34,7 @@ internal static class Program
             ModernLayoutPolish.Attach(main);
             SettingsDrawerLayoutFix.Attach(main);
             MockupFixedLayout.Attach(main);
+            ReferenceVisualPolish.Attach(main);
             ApplyTestSize(main);
 
             var page = Environment.GetEnvironmentVariable("GOLDBAR_UI_PAGE");
