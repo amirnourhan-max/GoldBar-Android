@@ -1,0 +1,81 @@
+name: Build and test Windows EXE
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Verify gold calculation logic
+        run: dotnet run --project windows/GoldBar.Verify/GoldBar.Verify.csproj -c Release
+
+      - name: Build Windows desktop app
+        run: dotnet build windows/GoldBar.Windows/GoldBar.Windows.csproj -c Release
+
+      - name: Publish portable self-contained EXE
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build/windows-x64 | Out-Null
+          dotnet publish windows/GoldBar.Windows/GoldBar.Windows.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -o build/windows-x64
+          if (!(Test-Path build/windows-x64/GoldBar.exe)) { throw 'GoldBar.exe was not produced' }
+          Copy-Item build/windows-x64/GoldBar.exe build/GoldBar-Windows-v1.0.0.exe
+
+      - name: Windows launch smoke test
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path build/GoldBar-Windows-v1.0.0.exe).Path
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 5
+          if ($p.HasExited) { throw "Gold Bar exited during startup with code $($p.ExitCode)" }
+          Stop-Process -Id $p.Id -Force
+          Write-Host "Windows GUI startup PASS"
+
+      - name: Record EXE metadata
+        shell: pwsh
+        run: |
+          Get-Item build/GoldBar-Windows-v1.0.0.exe | Format-List Name,Length,VersionInfo | Out-File build/windows-metadata.txt
+          Get-FileHash build/GoldBar-Windows-v1.0.0.exe -Algorithm SHA256 | Format-List | Out-File -Append build/windows-metadata.txt
+          Get-Content build/windows-metadata.txt
+
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoldBar-Windows-v1.0.0
+          path: build/GoldBar-Windows-v1.0.0.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Windows test metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoldBar-Windows-v1.0.0-metadata
+          path: build/windows-metadata.txt
+          if-no-files-found: ignore
+          retention-days: 14
