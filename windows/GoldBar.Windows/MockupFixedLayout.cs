@@ -3,9 +3,8 @@ using System.Reflection;
 namespace GoldBar.Windows;
 
 // Locks the dashboard to the same fixed visual hierarchy as the approved mockup.
-// No user-resizable cards/splitters remain. The right-side scale card is collapsed
-// because the reference design keeps live scale status in the sidebar and opens
-// scale settings as an integrated right drawer.
+// No user-resizable cards/splitters remain. The main scale status stays in the
+// sidebar, so the registration card can occupy the full top row like the reference.
 internal static class MockupFixedLayout
 {
     private static readonly Color Bg = Color.FromArgb(6, 8, 12);
@@ -17,12 +16,6 @@ internal static class MockupFixedLayout
 
         T? Get<T>(string field) where T : class
             => type.GetField(field, flags)?.GetValue(form) as T;
-
-        var mainSplit = Get<SplitContainer>("_dashboardMainSplit");
-        var topSplit = Get<SplitContainer>("_dashboardTopSplit");
-        var bottomLeft = Get<SplitContainer>("_dashboardBottomLeft");
-        var bottomRight = Get<SplitContainer>("_dashboardBottomRight");
-        var drawer = Get<RoundedPanel>("_settingsDrawer");
 
         void LockSplit(SplitContainer? split)
         {
@@ -37,8 +30,15 @@ internal static class MockupFixedLayout
 
         void ApplyReferenceGeometry()
         {
-            // Sidebar width in the approved mockup is intentionally generous so the
-            // GOLD BAR brand and navigation are readable instead of compressed.
+            // Re-read these fields every time. ShowPage() rebuilds the dashboard and
+            // replaces all SplitContainer instances, so retaining the old references
+            // would accidentally restore the resizable layout after a page refresh.
+            var mainSplit = Get<SplitContainer>("_dashboardMainSplit");
+            var topSplit = Get<SplitContainer>("_dashboardTopSplit");
+            var bottomLeft = Get<SplitContainer>("_dashboardBottomLeft");
+            var bottomRight = Get<SplitContainer>("_dashboardBottomRight");
+            var drawer = Get<RoundedPanel>("_settingsDrawer");
+
             var shell = form.Controls
                 .OfType<TableLayoutPanel>()
                 .FirstOrDefault(x => x.ColumnCount == 2 && x.RowCount == 1);
@@ -50,7 +50,8 @@ internal static class MockupFixedLayout
                 shell.ColumnStyles[1].Width = 100;
             }
 
-            // Approved layout: quick registration occupies the full top content row.
+            // Approved mockup: quick registration is one full-width card. Scale
+            // status/receive remains available in the left sidebar and settings drawer.
             if (topSplit is not null && !topSplit.IsDisposed)
             {
                 try { topSplit.Panel2Collapsed = true; } catch { }
@@ -61,16 +62,13 @@ internal static class MockupFixedLayout
             LockSplit(bottomLeft);
             LockSplit(bottomRight);
 
-            // Fixed proportions derived from the approved reference image:
-            // upper registration row ~46%, lower calculation row ~54%.
+            // Fixed proportions: registration row then three equal lower cards.
             SetPercent(mainSplit, 46);
-            // Lower row is three equal columns: Raise | Lower | Recent.
             SetPercent(bottomLeft, 33);
             SetPercent(bottomRight, 50);
 
             if (drawer is not null && !drawer.IsDisposed)
             {
-                // The reference drawer is narrow and tall, not a second full window.
                 drawer.Width = Math.Clamp((int)(form.ClientSize.Width * 0.22), 330, 372);
                 drawer.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right;
             }
@@ -84,13 +82,22 @@ internal static class MockupFixedLayout
         };
         form.Resize += (_, _) => ApplyReferenceGeometry();
 
-        // Page changes rebuild dashboard controls; reapply the lock shortly afterward.
         var workspace = Get<Panel>("_workspace");
         if (workspace is not null)
         {
             workspace.ControlAdded += (_, _) =>
             {
-                try { form.BeginInvoke((Action)ApplyReferenceGeometry); } catch { }
+                try
+                {
+                    form.BeginInvoke((Action)(() =>
+                    {
+                        ApplyReferenceGeometry();
+                        // One second layout pass catches nested controls created by
+                        // WinForms after the page root was inserted.
+                        try { form.BeginInvoke((Action)ApplyReferenceGeometry); } catch { }
+                    }));
+                }
+                catch { }
             };
         }
     }
@@ -126,6 +133,12 @@ internal static class MockupFixedLayout
             else if (label.Text.Contains("Windows Desktop", StringComparison.OrdinalIgnoreCase))
             {
                 label.ForeColor = Color.FromArgb(150, 159, 176);
+            }
+            else if (label.Text.StartsWith("GOLD BAR", StringComparison.OrdinalIgnoreCase)
+                && label.Text.Contains('v'))
+            {
+                label.Text = "GOLD BAR • v1.5.1";
+                label.RightToLeft = RightToLeft.No;
             }
         }
 
