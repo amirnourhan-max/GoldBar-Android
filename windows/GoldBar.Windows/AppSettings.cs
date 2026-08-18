@@ -5,7 +5,7 @@ namespace GoldBar.Windows;
 
 public sealed class AppSettings
 {
-    public int SettingsVersion { get; set; } = 2;
+    public int SettingsVersion { get; set; } = 3;
 
     public string ReportFolder { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
@@ -39,6 +39,10 @@ public sealed class AppSettings
     public string QueryLineEnding { get; set; } = "CRLF";
     public int ReadTimeoutMs { get; set; } = 1800;
 
+    // Operator-adjustable dashboard layout.
+    public int DashboardSettingsWidth { get; set; } = 360;
+    public int DashboardEntryHeight { get; set; } = 285;
+
     public static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "GoldBar",
@@ -52,20 +56,25 @@ public sealed class AppSettings
             var json = File.ReadAllText(SettingsPath);
             var loaded = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
 
-            // v1 settings had AutoRead=true by default. On first upgrade disable it so
-            // the scale no longer continuously overwrites the weight field.
-            if (!json.Contains("\"SettingsVersion\"", StringComparison.Ordinal))
+            // Legacy builds defaulted AutoRead to true. Disable it on migration so
+            // streaming scale noise never continuously overwrites the weight field.
+            if (!json.Contains("\"SettingsVersion\"", StringComparison.Ordinal)
+                || loaded.SettingsVersion < 3)
             {
-                loaded.SettingsVersion = 2;
+                loaded.SettingsVersion = 3;
                 loaded.AutoRead = false;
                 loaded.StableAutoReadOnly = true;
                 loaded.StableSampleCount = 3;
                 loaded.StableToleranceGrams = 0.02;
+                loaded.DashboardSettingsWidth = 360;
+                loaded.DashboardEntryHeight = 285;
                 try { loaded.Save(); } catch { }
             }
 
             loaded.StableSampleCount = Math.Clamp(loaded.StableSampleCount, 2, 10);
             loaded.StableToleranceGrams = Math.Clamp(loaded.StableToleranceGrams, 0.001, 5.0);
+            loaded.DashboardSettingsWidth = Math.Clamp(loaded.DashboardSettingsWidth, 300, 520);
+            loaded.DashboardEntryHeight = Math.Clamp(loaded.DashboardEntryHeight, 220, 520);
             return loaded;
         }
         catch
@@ -76,7 +85,7 @@ public sealed class AppSettings
 
     public void Save()
     {
-        SettingsVersion = 2;
+        SettingsVersion = 3;
         var dir = Path.GetDirectoryName(SettingsPath)!;
         Directory.CreateDirectory(dir);
         File.WriteAllText(
