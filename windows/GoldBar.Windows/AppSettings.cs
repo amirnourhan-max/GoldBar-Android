@@ -5,7 +5,7 @@ namespace GoldBar.Windows;
 
 public sealed class AppSettings
 {
-    public int SettingsVersion { get; set; } = 5;
+    public int SettingsVersion { get; set; } = 6;
 
     public string ReportFolder { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
@@ -38,9 +38,9 @@ public sealed class AppSettings
     public string QueryLineEnding { get; set; } = "CRLF";
     public int ReadTimeoutMs { get; set; } = 1800;
 
-    // Default dashboard gives the quick-entry card enough height to keep all
-    // buttons visible. The operator can then resize every split with the mouse.
-    public int DashboardUpperPercent { get; set; } = 57;
+    // Balanced default: quick entry remains complete while the lower calculation
+    // cards are also visible. All splits remain mouse-resizable and are persisted.
+    public int DashboardUpperPercent { get; set; } = 50;
     public int DashboardEntryPercent { get; set; } = 67;
     public int DashboardRaisePercent { get; set; } = 34;
     public int DashboardLowerPercent { get; set; } = 50;
@@ -58,17 +58,15 @@ public sealed class AppSettings
             var json = File.ReadAllText(SettingsPath);
             var loaded = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
 
-            // Upgrade old installations once: disable noisy continuous reading and
-            // restore a dashboard split that always leaves room for the entry actions.
             if (!json.Contains("\"SettingsVersion\"", StringComparison.Ordinal)
-                || loaded.SettingsVersion < 5)
+                || loaded.SettingsVersion < 6)
             {
-                loaded.SettingsVersion = 5;
+                loaded.SettingsVersion = 6;
                 loaded.AutoRead = false;
                 loaded.StableAutoReadOnly = true;
                 loaded.StableSampleCount = 3;
                 loaded.StableToleranceGrams = 0.02;
-                loaded.DashboardUpperPercent = 57;
+                loaded.DashboardUpperPercent = 50;
                 loaded.DashboardEntryPercent = 67;
                 loaded.DashboardRaisePercent = 34;
                 loaded.DashboardLowerPercent = 50;
@@ -91,7 +89,7 @@ public sealed class AppSettings
 
     public void Save()
     {
-        SettingsVersion = 5;
+        SettingsVersion = 6;
         var dir = Path.GetDirectoryName(SettingsPath)!;
         Directory.CreateDirectory(dir);
         File.WriteAllText(
