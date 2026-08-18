@@ -28,6 +28,7 @@
     <Compile Include="SettingsDrawerPolish.cs" />
     <Compile Include="SettingsDrawerLayoutFix.cs" />
     <Compile Include="MockupFixedLayout.cs" />
+    <Compile Include="ReferenceVisualPolish.cs" />
     <Compile Include="ModernSplashForm.cs" />
   </ItemGroup>
   <ItemGroup>
