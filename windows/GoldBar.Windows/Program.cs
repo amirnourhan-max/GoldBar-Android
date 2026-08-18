@@ -31,11 +31,9 @@ internal static class Program
         try
         {
             main = new ModernMainForm();
+            ModernLayoutPolish.Attach(main);
             ApplyTestSize(main);
 
-            // Visual test navigation must happen after the native Form handle and
-            // child z-order have been created. This also accurately mirrors a real
-            // user clicking Settings after the app appears.
             var page = Environment.GetEnvironmentVariable("GOLDBAR_UI_PAGE");
             if (!string.IsNullOrWhiteSpace(page))
                 main.Shown += (_, _) => main.ShowPageForTest(page);
