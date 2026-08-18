@@ -54,10 +54,10 @@ public class QuickCalcWidget extends AppWidgetProvider {
                         + " g  |  جمع " + n(corrWeight + add) + " g");
 
         Intent openApp = new Intent(
-                context, MainActivityV109.class);
+                context, MainActivityV110.class);
         PendingIntent openPi = PendingIntent.getActivity(
                 context,
-                1090,
+                1100,
                 openApp,
                 PendingIntent.FLAG_UPDATE_CURRENT
                         | PendingIntent.FLAG_IMMUTABLE);
@@ -69,7 +69,7 @@ public class QuickCalcWidget extends AppWidgetProvider {
                 .setAction("com.amirnourhan.goldbar.WIDGET_SPLIT");
         PendingIntent splitPi = PendingIntent.getActivity(
                 context,
-                1091,
+                1101,
                 splitIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT
                         | PendingIntent.FLAG_IMMUTABLE);
@@ -81,7 +81,7 @@ public class QuickCalcWidget extends AppWidgetProvider {
                 .setAction("com.amirnourhan.goldbar.WIDGET_CORRECTION");
         PendingIntent correctionPi = PendingIntent.getActivity(
                 context,
-                1092,
+                1102,
                 correctionIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT
                         | PendingIntent.FLAG_IMMUTABLE);
