@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Drawing.Imaging;
-using System.Reflection;
 
 namespace GoldBar.Windows;
 
@@ -22,19 +21,21 @@ internal static class Program
             return;
         }
 
-        using var splash = new SplashForm();
+        using var splash = new ModernSplashForm();
         splash.Show();
         splash.Refresh();
         Application.DoEvents();
 
         var watch = Stopwatch.StartNew();
-        DesktopMainFormV2 main;
+        ModernMainForm main;
         try
         {
-            main = new DesktopMainFormV2();
-            DesktopV2VisualFixer.Attach(main);
+            main = new ModernMainForm();
             ApplyTestSize(main);
-            ApplyTestPage(main);
+            var page = Environment.GetEnvironmentVariable("GOLDBAR_UI_PAGE");
+            if (!string.IsNullOrWhiteSpace(page)) main.ShowPageForTest(page);
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GOLDBAR_UI_SIZE")))
+                main.WindowState = FormWindowState.Maximized;
         }
         catch (Exception ex)
         {
@@ -58,23 +59,25 @@ internal static class Program
 
     private static void RunSettingsSelfTest()
     {
-        var impossibleReportPath = Path.Combine(Path.GetTempPath(), "GoldBar-Should-Not-Be-Created", Guid.NewGuid().ToString("N"));
-        if (Directory.Exists(impossibleReportPath)) Directory.Delete(impossibleReportPath, true);
+        var reportPath = Path.Combine(Path.GetTempPath(), "GoldBar-Should-Not-Be-Created", Guid.NewGuid().ToString("N"));
+        if (Directory.Exists(reportPath)) Directory.Delete(reportPath, true);
         var s = new AppSettings
         {
-            ReportFolder = impossibleReportPath,
+            ReportFolder = reportPath,
             AutoRead = false,
             StableAutoReadOnly = true,
             StableSampleCount = 4,
             StableToleranceGrams = 0.015,
             PortName = "COM9",
-            BaudRate = 2400
+            BaudRate = 2400,
+            DashboardEntryPercent = 63
         };
         s.Save();
         var loaded = AppSettings.Load();
-        if (loaded.ReportFolder != impossibleReportPath || loaded.AutoRead || loaded.StableSampleCount != 4 || Math.Abs(loaded.StableToleranceGrams - 0.015) > 1e-9)
+        if (loaded.ReportFolder != reportPath || loaded.AutoRead || loaded.StableSampleCount != 4
+            || Math.Abs(loaded.StableToleranceGrams - 0.015) > 1e-9 || loaded.DashboardEntryPercent != 63)
             throw new InvalidOperationException("Settings round-trip failed.");
-        if (Directory.Exists(impossibleReportPath))
+        if (Directory.Exists(reportPath))
             throw new InvalidOperationException("Saving settings must not create the report directory.");
         var output = Environment.GetEnvironmentVariable("GOLDBAR_SELFTEST_OUT");
         if (!string.IsNullOrWhiteSpace(output)) File.WriteAllText(output, "SETTINGS SELFTEST PASS");
@@ -94,25 +97,16 @@ internal static class Program
         if (!string.IsNullOrWhiteSpace(output)) File.WriteAllText(output, "SCALE STABILITY SELFTEST PASS");
     }
 
-    private static void ApplyTestPage(DesktopMainFormV2 main)
-    {
-        var page = Environment.GetEnvironmentVariable("GOLDBAR_UI_PAGE");
-        if (string.IsNullOrWhiteSpace(page) || page.Equals("dashboard", StringComparison.OrdinalIgnoreCase)) return;
-        try
-        {
-            var method = typeof(DesktopMainFormV2).GetMethod("ShowPage", BindingFlags.Instance | BindingFlags.NonPublic);
-            method?.Invoke(main, new object[] { page });
-        }
-        catch { }
-    }
-
     private static void ApplyTestSize(Form main)
     {
         var raw = Environment.GetEnvironmentVariable("GOLDBAR_UI_SIZE");
         if (string.IsNullOrWhiteSpace(raw)) return;
         var parts = raw.ToLowerInvariant().Split('x');
         if (parts.Length == 2 && int.TryParse(parts[0], out var w) && int.TryParse(parts[1], out var h))
+        {
+            main.WindowState = FormWindowState.Normal;
             main.Size = new Size(Math.Max(main.MinimumSize.Width, w), Math.Max(main.MinimumSize.Height, h));
+        }
     }
 
     private static void ConfigureUiScreenshot(Form main)
@@ -122,7 +116,7 @@ internal static class Program
 
         main.Shown += (_, _) =>
         {
-            var timer = new System.Windows.Forms.Timer { Interval = 900 };
+            var timer = new System.Windows.Forms.Timer { Interval = 1000 };
             timer.Tick += (_, _) =>
             {
                 timer.Stop();
