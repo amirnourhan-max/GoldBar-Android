@@ -32,6 +32,7 @@ internal static class Program
         {
             main = new ModernMainForm();
             ModernLayoutPolish.Attach(main);
+            SettingsDrawerPolish.Attach(main);
             ApplyTestSize(main);
 
             var page = Environment.GetEnvironmentVariable("GOLDBAR_UI_PAGE");
