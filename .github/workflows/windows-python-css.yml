@@ -56,18 +56,25 @@ jobs:
           if ($py -notmatch 'serial\.Serial') { throw 'Python serial scale reader missing' }
           if ($py -notmatch 'AutoRead.*False') { throw 'AutoRead must default off' }
 
-      - name: Apply JSON bridge compatibility patch
+      - name: Apply packaging safety patches
         shell: pwsh
         run: |
           $p = 'windows/GoldBar.Python/app.py'
           $text = Get-Content $p -Raw
           $text = $text.Replace('allow_nan=False, default=lambda _: None','allow_nan=True')
           $text = $text.Replace('allow_nan=False','allow_nan=True')
+          $text = $text.Replace('from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot','from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot, Qt')
+          $text = $text.Replace('from PySide6.QtGui import QDesktopServices, QIcon','from PySide6.QtGui import QDesktopServices, QIcon, QColor')
+          $text = $text.Replace('splash.showMessage("در حال بارگذاری…", 0x0084 | 0x0004, 0xFFF1C1)  # AlignCenter | AlignBottom','splash.showMessage("در حال بارگذاری…", Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom, QColor("#fff1c1"))')
           Set-Content -Path $p -Value $text -Encoding utf8
+
           $j = 'windows/GoldBar.Python/web/app.js'
           $js = Get-Content $j -Raw
-          $js = $js.Replace('JSON.parse(raw)',"JSON.parse(String(raw).replace(/\\bNaN\\b/g,'null'))")
+          $js = $js.Replace('JSON.parse(raw)',"JSON.parse(String(raw).replaceAll('NaN','null'))")
           Set-Content -Path $j -Value $js -Encoding utf8
+
+          $c = 'windows/GoldBar.Python/web/style.css'
+          Add-Content -Path $c -Value "`n/* enforced desktop direction: sidebar stays on the left, Persian content remains RTL */`n.app-shell{direction:ltr!important}.sidebar,.main-area{direction:rtl!important}" -Encoding utf8
 
       - name: Verify calculation logic in Python
         shell: pwsh
