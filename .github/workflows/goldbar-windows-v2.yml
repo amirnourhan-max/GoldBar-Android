@@ -1,0 +1,99 @@
+name: Build Gold Bar Windows Installer
+
+on:
+  push:
+    branches: [windows-goldbar-v2]
+    paths:
+      - 'ci/GoldBar_Windows_Release_v2_Source.zip'
+      - '.github/workflows/goldbar-windows-v2.yml'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Expand source
+        shell: pwsh
+        run: |
+          $work = Join-Path $PWD 'work'
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+          Expand-Archive -Path 'ci/GoldBar_Windows_Release_v2_Source.zip' -DestinationPath $work -Force
+
+      - name: Restore and publish self-contained x64
+        shell: pwsh
+        run: |
+          $proj = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/GoldBar.Windows.csproj'
+          $out = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/publish'
+          dotnet restore $proj -r win-x64
+          dotnet publish $proj -c Release -r win-x64 --self-contained true --no-restore -o $out -p:PublishReadyToRun=true -p:PublishSingleFile=false
+          if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
+
+      - name: Run compiled software self-test
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/publish/GoldBar.exe'
+          & $exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "GoldBar self-test failed with exit code $LASTEXITCODE" }
+
+      - name: GUI startup smoke test
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/publish/GoldBar.exe'
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 7
+          if ($p.HasExited) { throw "GoldBar GUI exited early with code $($p.ExitCode)" }
+          Stop-Process -Id $p.Id -Force
+
+      - name: Download WebView2 bootstrapper
+        shell: pwsh
+        run: |
+          $dest = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/Installer/MicrosoftEdgeWebview2Setup.exe'
+          Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $dest -UseBasicParsing
+          if (!(Test-Path $dest)) { throw 'WebView2 bootstrapper download failed' }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          $iss = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/Installer/GoldBar.iss'
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
+          & $iscc $iss
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed' }
+
+      - name: Silent installer validation
+        shell: pwsh
+        run: |
+          $setup = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/Installer/Output/GoldBar-Setup-v2.0.0.exe'
+          $dest = Join-Path $env:RUNNER_TEMP 'GoldBar-Install-Test'
+          & $setup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$dest"
+          if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit code $LASTEXITCODE" }
+          $installedExe = Join-Path $dest 'GoldBar.exe'
+          if (!(Test-Path $installedExe)) { throw 'Installed GoldBar.exe not found' }
+          & $installedExe --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Installed executable self-test failed' }
+
+      - name: SHA256
+        shell: pwsh
+        run: |
+          $setup = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/Installer/Output/GoldBar-Setup-v2.0.0.exe'
+          Get-FileHash $setup -Algorithm SHA256 | Format-List
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoldBar-Windows-Installer-v2.0.0
+          path: work/GoldBar_Windows_Release_v2/Installer/Output/GoldBar-Setup-v2.0.0.exe
+          if-no-files-found: error
+          retention-days: 14
