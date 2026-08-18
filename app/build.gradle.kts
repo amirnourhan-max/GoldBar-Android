@@ -61,8 +61,8 @@ dependencies {
     implementation("androidx.compose.material3:material3:1.3.1")
     debugImplementation("androidx.compose.ui:ui-tooling:1.7.8")
 
-    implementation("androidx.glance:glance-appwidget:1.1.1")
-    implementation("androidx.glance:glance-material3:1.1.1")
+    implementation("androidx.glance:glance-appwidget:1.2.0-rc01")
+    implementation("androidx.glance:glance-material3:1.2.0-rc01")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     testImplementation("junit:junit:4.13.2")
