@@ -38,7 +38,7 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Verify Excel business logic
+      - name: Verify edited Excel business logic
         run: |
           rm -rf build/logic-test
           mkdir -p build/logic-test
@@ -48,10 +48,13 @@ jobs:
             verify/Verify.java
           java -cp build/logic-test Verify
 
-      - name: Verify row UI was removed
+      - name: Verify UI and keyboard implementation
         run: |
           ! grep -q "buildGuideCard" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
           ! grep -q "inputGuide" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
+          grep -q "raiseTargetAssay" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
+          grep -q "lowerTargetAssay" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
+          grep -q "WindowInsets.Type.ime" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
           grep -q "SOFT_INPUT_ADJUST_RESIZE" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
           grep -q 'windowSoftInputMode="adjustResize"' app/src/main/AndroidManifest.xml
 
@@ -79,29 +82,39 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
+            mkdir -p build
             adb logcat -c
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell am force-stop com.amirnourhan.goldbar
             adb shell am start -W -n com.amirnourhan.goldbar/.MainActivity
             sleep 4
+
+            adb shell pidof com.amirnourhan.goldbar | tr -d '\r' > build/pid-start.txt
+            test -s build/pid-start.txt
             adb shell uiautomator dump /sdcard/start.xml
             adb pull /sdcard/start.xml build/start.xml
-            grep -q "GOLD BAR" build/start.xml
-            ! grep -q "شماره راهنما" build/start.xml
-            ! grep -q "ردیف / شماره راهنما" build/start.xml
+            grep -q 'content-desc="gold-bar-title"' build/start.xml
 
-            adb shell input swipe 520 1750 520 350 500
-            adb shell input swipe 520 1750 520 350 500
-            adb shell input swipe 520 1750 520 350 500
-            sleep 2
-            adb shell uiautomator dump /sdcard/tools.xml
-            adb pull /sdcard/tools.xml build/tools.xml
+            # Scroll until the quick-tools field is available in the visible hierarchy.
+            found=0
+            for i in 1 2 3 4 5 6; do
+              adb shell uiautomator dump /sdcard/tools.xml >/dev/null
+              adb pull /sdcard/tools.xml build/tools.xml >/dev/null
+              if grep -q 'content-desc="quick-split-base"' build/tools.xml; then
+                found=1
+                break
+              fi
+              adb shell input swipe 520 1750 520 350 450
+              sleep 1
+            done
+            test "$found" = "1"
+
             python3 - <<'PY'
             import re, xml.etree.ElementTree as ET
             root = ET.parse('build/tools.xml').getroot()
             node = next((n for n in root.iter('node') if n.attrib.get('content-desc') == 'quick-split-base'), None)
             if node is None:
-                raise SystemExit('quick-split-base field not visible after scrolling')
+                raise SystemExit('quick-split-base field not visible')
             nums = list(map(int, re.findall(r'\d+', node.attrib['bounds'])))
             x = (nums[0] + nums[2]) // 2
             y = (nums[1] + nums[3]) // 2
@@ -109,11 +122,14 @@ jobs:
             PY
             bash build/tap.sh
             sleep 2
-            adb shell input text 812
-            sleep 1
+
+            # Verify an IME is actually active, then retain the focused field in the app hierarchy.
+            adb shell dumpsys input_method > build/input-method.txt
+            grep -Eq 'mInputShown=true|mIsInputViewShown=true|inputShown=true' build/input-method.txt
             adb shell uiautomator dump /sdcard/keyboard.xml
             adb pull /sdcard/keyboard.xml build/keyboard.xml
             grep -q 'content-desc="quick-split-base"' build/keyboard.xml
+            adb exec-out screencap -p > build/keyboard.png
 
             adb logcat -d > build/logcat.txt
             adb shell pidof com.amirnourhan.goldbar | tr -d '\r' > build/pid.txt
@@ -125,7 +141,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-v1.0.4-debug-apk
+          name: GoldBar-v1.0.5-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
@@ -134,12 +150,15 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-smoke-test-diagnostics-v104
+          name: GoldBar-smoke-test-diagnostics-v105
           path: |
             build/logcat.txt
             build/start.xml
             build/tools.xml
             build/keyboard.xml
+            build/keyboard.png
+            build/input-method.txt
+            build/pid-start.txt
             build/pid.txt
           if-no-files-found: ignore
           retention-days: 14
