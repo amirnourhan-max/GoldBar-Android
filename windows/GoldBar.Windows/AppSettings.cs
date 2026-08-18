@@ -5,7 +5,7 @@ namespace GoldBar.Windows;
 
 public sealed class AppSettings
 {
-    public int SettingsVersion { get; set; } = 6;
+    public int SettingsVersion { get; set; } = 7;
 
     public string ReportFolder { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
@@ -38,10 +38,11 @@ public sealed class AppSettings
     public string QueryLineEnding { get; set; } = "CRLF";
     public int ReadTimeoutMs { get; set; } = 1800;
 
-    // Balanced default: quick entry remains complete while the lower calculation
-    // cards are also visible. All splits remain mouse-resizable and are persisted.
-    public int DashboardUpperPercent { get; set; } = 50;
-    public int DashboardEntryPercent { get; set; } = 67;
+    // Dashboard splitters are user-resizable with the mouse. The default gives
+    // the quick-entry card enough height for all three action buttons even on
+    // compact/high-DPI displays; the chosen proportions are saved on exit.
+    public int DashboardUpperPercent { get; set; } = 62;
+    public int DashboardEntryPercent { get; set; } = 68;
     public int DashboardRaisePercent { get; set; } = 34;
     public int DashboardLowerPercent { get; set; } = 50;
 
@@ -59,15 +60,15 @@ public sealed class AppSettings
             var loaded = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
 
             if (!json.Contains("\"SettingsVersion\"", StringComparison.Ordinal)
-                || loaded.SettingsVersion < 6)
+                || loaded.SettingsVersion < 7)
             {
-                loaded.SettingsVersion = 6;
+                loaded.SettingsVersion = 7;
                 loaded.AutoRead = false;
                 loaded.StableAutoReadOnly = true;
                 loaded.StableSampleCount = 3;
                 loaded.StableToleranceGrams = 0.02;
-                loaded.DashboardUpperPercent = 50;
-                loaded.DashboardEntryPercent = 67;
+                loaded.DashboardUpperPercent = 62;
+                loaded.DashboardEntryPercent = 68;
                 loaded.DashboardRaisePercent = 34;
                 loaded.DashboardLowerPercent = 50;
                 try { loaded.Save(); } catch { }
@@ -75,7 +76,7 @@ public sealed class AppSettings
 
             loaded.StableSampleCount = Math.Clamp(loaded.StableSampleCount, 2, 10);
             loaded.StableToleranceGrams = Math.Clamp(loaded.StableToleranceGrams, 0.001, 5.0);
-            loaded.DashboardUpperPercent = Math.Clamp(loaded.DashboardUpperPercent, 35, 72);
+            loaded.DashboardUpperPercent = Math.Clamp(loaded.DashboardUpperPercent, 45, 78);
             loaded.DashboardEntryPercent = Math.Clamp(loaded.DashboardEntryPercent, 45, 82);
             loaded.DashboardRaisePercent = Math.Clamp(loaded.DashboardRaisePercent, 22, 55);
             loaded.DashboardLowerPercent = Math.Clamp(loaded.DashboardLowerPercent, 30, 70);
@@ -89,7 +90,7 @@ public sealed class AppSettings
 
     public void Save()
     {
-        SettingsVersion = 6;
+        SettingsVersion = 7;
         var dir = Path.GetDirectoryName(SettingsPath)!;
         Directory.CreateDirectory(dir);
         File.WriteAllText(
