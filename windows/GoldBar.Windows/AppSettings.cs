@@ -5,7 +5,7 @@ namespace GoldBar.Windows;
 
 public sealed class AppSettings
 {
-    public int SettingsVersion { get; set; } = 4;
+    public int SettingsVersion { get; set; } = 5;
 
     public string ReportFolder { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
@@ -29,8 +29,6 @@ public sealed class AppSettings
     public bool ReadOnUpArrow { get; set; } = true;
     public bool ShowRawText { get; set; } = false;
 
-    // Auto-read filtering. Manual ↑ requests stay responsive while continuous
-    // streaming is only published after several close readings.
     public bool StableAutoReadOnly { get; set; } = true;
     public int StableSampleCount { get; set; } = 3;
     public double StableToleranceGrams { get; set; } = 0.02;
@@ -40,9 +38,9 @@ public sealed class AppSettings
     public string QueryLineEnding { get; set; } = "CRLF";
     public int ReadTimeoutMs { get; set; } = 1800;
 
-    // Dashboard split positions are stored as percentages so the layout remains
-    // usable on different monitor sizes/DPI settings.
-    public int DashboardUpperPercent { get; set; } = 47;
+    // Default dashboard gives the quick-entry card enough height to keep all
+    // buttons visible. The operator can then resize every split with the mouse.
+    public int DashboardUpperPercent { get; set; } = 57;
     public int DashboardEntryPercent { get; set; } = 67;
     public int DashboardRaisePercent { get; set; } = 34;
     public int DashboardLowerPercent { get; set; } = 50;
@@ -60,17 +58,17 @@ public sealed class AppSettings
             var json = File.ReadAllText(SettingsPath);
             var loaded = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
 
-            // Older builds defaulted AutoRead to true. Migrate once so scale noise
-            // does not continuously overwrite the weight field on existing installs.
+            // Upgrade old installations once: disable noisy continuous reading and
+            // restore a dashboard split that always leaves room for the entry actions.
             if (!json.Contains("\"SettingsVersion\"", StringComparison.Ordinal)
-                || loaded.SettingsVersion < 4)
+                || loaded.SettingsVersion < 5)
             {
-                loaded.SettingsVersion = 4;
+                loaded.SettingsVersion = 5;
                 loaded.AutoRead = false;
                 loaded.StableAutoReadOnly = true;
                 loaded.StableSampleCount = 3;
                 loaded.StableToleranceGrams = 0.02;
-                loaded.DashboardUpperPercent = 47;
+                loaded.DashboardUpperPercent = 57;
                 loaded.DashboardEntryPercent = 67;
                 loaded.DashboardRaisePercent = 34;
                 loaded.DashboardLowerPercent = 50;
@@ -79,7 +77,7 @@ public sealed class AppSettings
 
             loaded.StableSampleCount = Math.Clamp(loaded.StableSampleCount, 2, 10);
             loaded.StableToleranceGrams = Math.Clamp(loaded.StableToleranceGrams, 0.001, 5.0);
-            loaded.DashboardUpperPercent = Math.Clamp(loaded.DashboardUpperPercent, 30, 70);
+            loaded.DashboardUpperPercent = Math.Clamp(loaded.DashboardUpperPercent, 35, 72);
             loaded.DashboardEntryPercent = Math.Clamp(loaded.DashboardEntryPercent, 45, 82);
             loaded.DashboardRaisePercent = Math.Clamp(loaded.DashboardRaisePercent, 22, 55);
             loaded.DashboardLowerPercent = Math.Clamp(loaded.DashboardLowerPercent, 30, 70);
@@ -93,7 +91,7 @@ public sealed class AppSettings
 
     public void Save()
     {
-        SettingsVersion = 4;
+        SettingsVersion = 5;
         var dir = Path.GetDirectoryName(SettingsPath)!;
         Directory.CreateDirectory(dir);
         File.WriteAllText(
