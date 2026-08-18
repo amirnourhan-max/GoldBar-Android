@@ -27,9 +27,10 @@ jobs:
       - name: Generate Gold Bar app icon
         shell: pwsh
         run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File windows/GoldBar.Windows/GenerateIcon.ps1
+          python -m pip install pillow --disable-pip-version-check -q
+          python windows/GoldBar.Windows/GenerateIcon.py
           if (!(Test-Path windows/GoldBar.Windows/AppIcon.ico)) { throw 'App icon was not generated' }
-          if ((Get-Item windows/GoldBar.Windows/AppIcon.ico).Length -lt 1000) { throw 'App icon is unexpectedly small' }
+          if ((Get-Item windows/GoldBar.Windows/AppIcon.ico).Length -lt 3000) { throw 'App icon is unexpectedly small' }
 
       - name: Verify gold calculation logic
         run: dotnet run --project windows/GoldBar.Verify/GoldBar.Verify.csproj -c Release
@@ -108,7 +109,6 @@ jobs:
           $settingsFile = Join-Path $env:LOCALAPPDATA 'GoldBar\settings.json'
           Remove-Item $settingsFile -Force -ErrorAction SilentlyContinue
 
-          # Scale filtering self test: noisy series rejected, stable series accepted.
           $env:GOLDBAR_SCALE_SELFTEST = '1'
           $env:GOLDBAR_SELFTEST_OUT = Join-Path $buildDir 'scale-selftest.txt'
           $p = Start-Process -FilePath $exe -Wait -PassThru
@@ -116,7 +116,6 @@ jobs:
           Remove-Item Env:GOLDBAR_SCALE_SELFTEST -ErrorAction SilentlyContinue
           Remove-Item Env:GOLDBAR_SELFTEST_OUT -ErrorAction SilentlyContinue
 
-          # Settings save must persist the path but must not create that report directory.
           $env:GOLDBAR_SETTINGS_SELFTEST = '1'
           $env:GOLDBAR_SELFTEST_OUT = Join-Path $buildDir 'settings-selftest.txt'
           $p = Start-Process -FilePath $exe -Wait -PassThru
@@ -125,7 +124,6 @@ jobs:
           Remove-Item Env:GOLDBAR_SELFTEST_OUT -ErrorAction SilentlyContinue
           Remove-Item $settingsFile -Force -ErrorAction SilentlyContinue
 
-          # Full-size screenshots of every operator page, including integrated settings.
           $pages = @('dashboard','entries','calculations','quick','reports','settings')
           $timer = [System.Diagnostics.Stopwatch]::StartNew()
           foreach ($page in $pages) {
@@ -140,7 +138,6 @@ jobs:
             if ((Get-Item $shot).Length -lt 25000) { throw "Screenshot too small for $page" }
           }
 
-          # Compact-window checks catch clipped buttons/card content.
           foreach ($page in @('dashboard','entries','settings')) {
             $shot = Join-Path $buildDir ("ui-compact-" + $page + ".png")
             $env:GOLDBAR_UI_PAGE = $page
