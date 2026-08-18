@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.Insets;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -16,6 +17,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
@@ -39,7 +41,6 @@ public class MainActivity extends Activity {
     private static final int BG = Color.rgb(8, 9, 11);
     private static final int CARD = Color.rgb(18, 20, 25);
     private static final int CARD2 = Color.rgb(26, 29, 35);
-    private static final int GOLD = Color.rgb(231, 184, 75);
     private static final int GOLD2 = Color.rgb(247, 211, 112);
     private static final int TEXT = Color.rgb(246, 244, 237);
     private static final int MUTED = Color.rgb(155, 161, 173);
@@ -47,21 +48,24 @@ public class MainActivity extends Activity {
     private static final int RED = Color.rgb(255, 105, 105);
 
     private final List<GoldEntry> entries = new ArrayList<>();
-    private final DecimalFormat df = new DecimalFormat("0.###", DecimalFormatSymbols.getInstance(Locale.US));
+    private final DecimalFormat df =
+            new DecimalFormat("0.###", DecimalFormatSymbols.getInstance(Locale.US));
 
     private SharedPreferences prefs;
     private ScrollView mainScroll;
     private LinearLayout entriesBox;
     private int editingIndex = -1;
 
-    private EditText targetAssay, barAssay, silverPercent;
+    private EditText raiseTargetAssay, barAssay;
+    private EditText lowerTargetAssay, silverPercent;
     private EditText inputWeight, inputAssay;
     private EditText splitBase, correctionWeight, correctionTarget, correctionDrop;
     private Button saveEntryButton;
 
     private TextView totalWeight, averageAssay, entryCount;
-    private TextView assayDiff, requiredBar, barState;
-    private TextView totalAlloy, silverNeed, nonSilverNeed, fourPerThousand, finalOther, totalAfterAlloy;
+    private TextView raiseDiff, requiredBar, raiseState;
+    private TextView totalAlloy, silverNeed, nonSilverNeed, fourPerThousand,
+            finalOther, totalAfterAlloy, lowerState;
     private TextView split3679, split6321, correctionAdd, correctionTotal;
 
     @Override
@@ -91,15 +95,21 @@ public class MainActivity extends Activity {
 
         body.addView(buildSummaryCard(), cardLp());
         body.addView(buildEntryCard(), cardLp());
-        body.addView(buildBarCard(), cardLp());
-        body.addView(buildAlloyCard(), cardLp());
+        body.addView(buildRaiseCard(), cardLp());
+        body.addView(buildLowerCard(), cardLp());
         body.addView(buildListCard(), cardLp());
         body.addView(buildToolsCard(), cardLp());
 
-        mainScroll.addView(body, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(mainScroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        mainScroll.addView(body,
+                new ScrollView.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(mainScroll,
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(root);
 
+        installImeInsets(root);
         bindWatchers();
         refreshAll();
     }
@@ -113,20 +123,25 @@ public class MainActivity extends Activity {
 
         TextView badge = tv("Au", 18, Color.rgb(20, 15, 3), true);
         badge.setGravity(Gravity.CENTER);
-        badge.setBackground(gradient(new int[]{GOLD2, Color.rgb(184, 130, 23)}, 18));
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(54), dp(54));
+        badge.setBackground(
+                gradient(new int[]{GOLD2, Color.rgb(184, 130, 23)}, 18));
+        LinearLayout.LayoutParams bp =
+                new LinearLayout.LayoutParams(dp(54), dp(54));
         bp.setMarginStart(dp(12));
         row.addView(badge, bp);
 
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
         TextView title = tv("GOLD BAR", 25, TEXT, true);
+        title.setContentDescription("gold-bar-title");
         title.setLetterSpacing(0.08f);
         TextView sub = tv("محاسبه عیار، شمش و بار ریخته‌گری", 12, MUTED, false);
         sub.setPadding(0, dp(3), 0, 0);
         titles.addView(title);
         titles.addView(sub);
-        row.addView(titles, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(titles,
+                new LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         return row;
     }
 
@@ -135,14 +150,17 @@ public class MainActivity extends Activity {
         totalWeight = value();
         averageAssay = value();
         entryCount = value();
-        c.addView(metricPair("کل وزن آبشده (g)", totalWeight, "عیار میانگین", averageAssay));
+        c.addView(metricPair("کل وزن آبشده (g)", totalWeight,
+                "عیار میانگین", averageAssay));
         c.addView(metric("تعداد آبشده", entryCount), top8());
         return c;
     }
 
     private View buildEntryCard() {
         LinearLayout c = card("ثبت سریع آبشده");
-        TextView hint = tv("وزن را وارد کن، «بعدی» را بزن، عیار را وارد کن و با «ثبت» روی کیبورد ذخیره کن.", 12, MUTED, false);
+        TextView hint = tv(
+                "وزن → بعدی → عیار → ثبت. بعد از ثبت، فیلد وزن خودکار برای آبشده بعدی آماده می‌شود.",
+                12, MUTED, false);
         hint.setPadding(0, 0, 0, dp(10));
         c.addView(hint);
 
@@ -152,7 +170,8 @@ public class MainActivity extends Activity {
         inputAssay.setContentDescription("entry-assay");
         inputWeight.setImeOptions(EditorInfo.IME_ACTION_NEXT);
         inputAssay.setImeOptions(EditorInfo.IME_ACTION_DONE);
-        c.addView(fieldPair("وزن آبشده (g)", inputWeight, "عیار آبشده", inputAssay));
+        c.addView(fieldPair("وزن آبشده (g)", inputWeight,
+                "عیار آبشده", inputAssay));
 
         inputWeight.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_NEXT || isEnter(event)) {
@@ -179,37 +198,70 @@ public class MainActivity extends Activity {
         return c;
     }
 
-    private View buildBarCard() {
-        LinearLayout c = card("محاسبه شمش ۹۹۵");
-        targetAssay = field("747", "عیار ریخته‌گری", false);
+    private View buildRaiseCard() {
+        LinearLayout c = card("بالا بردن عیار با شمش ۹۹۵");
+        TextView hint = tv(
+                "فقط وقتی عیار میانگین از عیار هدف کمتر باشد محاسبه می‌شود.",
+                11, MUTED, false);
+        hint.setPadding(0, 0, 0, dp(8));
+        c.addView(hint);
+
+        raiseTargetAssay = field("747", "عیار هدف", false);
         barAssay = field("995", "عیار شمش", false);
-        targetAssay.setImeOptions(EditorInfo.IME_ACTION_NEXT);
+        raiseTargetAssay.setContentDescription("raise-target-assay");
+        barAssay.setContentDescription("high-bar-assay");
+        raiseTargetAssay.setImeOptions(EditorInfo.IME_ACTION_NEXT);
         barAssay.setImeOptions(EditorInfo.IME_ACTION_DONE);
-        linkNext(targetAssay, barAssay);
+        linkNext(raiseTargetAssay, barAssay);
         doneHidesKeyboard(barAssay);
-        c.addView(fieldPair("عیار ریخته‌گری", targetAssay, "عیار شمش", barAssay));
-        assayDiff = value();
+        c.addView(fieldPair("عیار هدف افزایش", raiseTargetAssay,
+                "عیار شمش", barAssay));
+
+        raiseDiff = value();
         requiredBar = value();
-        c.addView(metricPair("اختلاف عیار", assayDiff, "شمش مورد نیاز (g)", requiredBar), top8());
-        barState = tv("—", 12, MUTED, true);
-        barState.setGravity(Gravity.CENTER);
-        barState.setPadding(dp(10), dp(10), dp(10), dp(10));
-        barState.setBackground(round(CARD2, 14, STROKE, 1));
-        c.addView(barState, top8());
+        c.addView(metricPair("اختلاف تا هدف", raiseDiff,
+                "شمش مورد نیاز (g)", requiredBar), top8());
+
+        raiseState = statusView();
+        c.addView(raiseState, top8());
         return c;
     }
 
-    private View buildAlloyCard() {
-        LinearLayout c = card("بار ریخته‌گری");
-        silverPercent = field("45", "درصد نقره", false);
+    private View buildLowerCard() {
+        LinearLayout c = card("پایین آوردن عیار با بار ریخته‌گری");
+        TextView hint = tv(
+                "این بخش فرمول جداگانه دارد و فقط وقتی عیار میانگین از هدف کاهش بالاتر باشد اجرا می‌شود.",
+                11, MUTED, false);
+        hint.setPadding(0, 0, 0, dp(8));
+        c.addView(hint);
+
+        lowerTargetAssay = field("746", "عیار هدف کاهش", false);
+        silverPercent = field("32", "درصد نقره", false);
+        lowerTargetAssay.setContentDescription("lower-target-assay");
+        silverPercent.setContentDescription("silver-percent");
+        lowerTargetAssay.setImeOptions(EditorInfo.IME_ACTION_NEXT);
         silverPercent.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        linkNext(lowerTargetAssay, silverPercent);
         doneHidesKeyboard(silverPercent);
-        c.addView(labeled("درصد نقره از کل بار", silverPercent));
-        totalAlloy = value(); silverNeed = value(); nonSilverNeed = value();
-        fourPerThousand = value(); finalOther = value(); totalAfterAlloy = value();
-        c.addView(metricPair("کل بار مورد نیاز (g)", totalAlloy, "نقره مورد نیاز (g)", silverNeed), top8());
-        c.addView(metricPair("بار بدون نقره (g)", nonSilverNeed, "۰.۴٪ کل وزن (g)", fourPerThousand), top8());
-        c.addView(metricPair("بار نهایی دیگر (g)", finalOther, "وزن پس از بار (g)", totalAfterAlloy), top8());
+        c.addView(fieldPair("عیار هدف کاهش", lowerTargetAssay,
+                "درصد نقره از بار", silverPercent));
+
+        totalAlloy = value();
+        silverNeed = value();
+        nonSilverNeed = value();
+        fourPerThousand = value();
+        finalOther = value();
+        totalAfterAlloy = value();
+
+        c.addView(metricPair("کل بار مورد نیاز (g)", totalAlloy,
+                "نقره مورد نیاز (g)", silverNeed), top8());
+        c.addView(metricPair("بار بدون نقره (g)", nonSilverNeed,
+                "۰.۴٪ کل وزن (g)", fourPerThousand), top8());
+        c.addView(metricPair("بار نهایی دیگر (g)", finalOther,
+                "وزن پس از بار (g)", totalAfterAlloy), top8());
+
+        lowerState = statusView();
+        c.addView(lowerState, top8());
         return c;
     }
 
@@ -228,7 +280,10 @@ public class MainActivity extends Activity {
                     refreshAll();
                     resetEntryForm(false);
                 }).show());
-        c.addView(clear, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
+        c.addView(clear,
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
+
         entriesBox = new LinearLayout(this);
         entriesBox.setOrientation(LinearLayout.VERTICAL);
         entriesBox.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
@@ -238,7 +293,9 @@ public class MainActivity extends Activity {
 
     private View buildToolsCard() {
         LinearLayout c = card("ابزارهای سریع اکسل");
-        TextView keyboardHint = tv("با باز شدن کیبورد، فیلد فعال خودکار بالای کیبورد نگه داشته می‌شود.", 11, MUTED, false);
+        TextView keyboardHint = tv(
+                "فیلد فعال هنگام باز شدن کیبورد به بالای کیبورد منتقل می‌شود.",
+                11, MUTED, false);
         keyboardHint.setPadding(0, 0, 0, dp(8));
         c.addView(keyboardHint);
 
@@ -247,12 +304,16 @@ public class MainActivity extends Activity {
         splitBase.setImeOptions(EditorInfo.IME_ACTION_DONE);
         doneHidesKeyboard(splitBase);
         c.addView(labeled("تقسیم ۳۶.۷۹٪ / ۶۳.۲۱٪", splitBase));
-        split3679 = value(); split6321 = value();
-        c.addView(metricPair("۳۶.۷۹٪", split3679, "۶۳.۲۱٪", split6321), top8());
+        split3679 = value();
+        split6321 = value();
+        c.addView(metricPair("۳۶.۷۹٪", split3679,
+                "۶۳.۲۱٪", split6321), top8());
 
         TextView sep = tv("اصلاح وزن برای افت عیار", 13, TEXT, true);
-        LinearLayout.LayoutParams sp = matchWrap(); sp.topMargin = dp(18);
+        LinearLayout.LayoutParams sp = matchWrap();
+        sp.topMargin = dp(18);
         c.addView(sep, sp);
+
         correctionWeight = field("250", "وزن پایه", false);
         correctionTarget = field("750", "عیار هدف", false);
         correctionDrop = field("1", "افت عیار", false);
@@ -265,21 +326,30 @@ public class MainActivity extends Activity {
         linkNext(correctionWeight, correctionTarget);
         linkNext(correctionTarget, correctionDrop);
         doneHidesKeyboard(correctionDrop);
-        c.addView(fieldPair("وزن پایه", correctionWeight, "عیار هدف", correctionTarget), top8());
+
+        c.addView(fieldPair("وزن پایه", correctionWeight,
+                "عیار هدف", correctionTarget), top8());
         c.addView(labeled("مقدار افت عیار", correctionDrop), top8());
-        correctionAdd = value(); correctionTotal = value();
-        c.addView(metricPair("بار افزوده (g)", correctionAdd, "جمع وزن (g)", correctionTotal), top8());
+
+        correctionAdd = value();
+        correctionTotal = value();
+        c.addView(metricPair("بار افزوده (g)", correctionAdd,
+                "جمع وزن (g)", correctionTotal), top8());
         return c;
     }
 
     private void bindWatchers() {
         TextWatcher w = new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
-            public void onTextChanged(CharSequence s, int st, int b, int c) { recalculate(); }
+            public void onTextChanged(CharSequence s, int st, int b, int c) {
+                recalculate();
+            }
             public void afterTextChanged(Editable e) {}
         };
-        targetAssay.addTextChangedListener(w);
+
+        raiseTargetAssay.addTextChangedListener(w);
         barAssay.addTextChangedListener(w);
+        lowerTargetAssay.addTextChangedListener(w);
         silverPercent.addTextChangedListener(w);
         splitBase.addTextChangedListener(w);
         correctionWeight.addTextChangedListener(w);
@@ -290,16 +360,25 @@ public class MainActivity extends Activity {
     private void saveEntry() {
         double weight = parse(inputWeight, -1);
         double assay = parse(inputAssay, -1);
+
         if (weight <= 0 || assay <= 0 || assay > 1000) {
             toast("وزن و عیار را صحیح وارد کن. عیار باید بین ۱ تا ۱۰۰۰ باشد.");
-            if (weight <= 0) inputWeight.requestFocus(); else inputAssay.requestFocus();
-            ensureFieldVisible(weight <= 0 ? inputWeight : inputAssay);
+            View bad = weight <= 0 ? inputWeight : inputAssay;
+            bad.requestFocus();
+            ensureFieldVisible(bad);
             return;
         }
 
-        boolean wasEditing = editingIndex >= 0 && editingIndex < entries.size();
+        boolean wasEditing =
+                editingIndex >= 0 && editingIndex < entries.size();
         GoldEntry e = new GoldEntry(1, weight, assay);
-        if (wasEditing) entries.set(editingIndex, e); else entries.add(e);
+
+        if (wasEditing) {
+            entries.set(editingIndex, e);
+        } else {
+            entries.add(e);
+        }
+
         saveEntries();
         refreshAll();
         resetEntryForm(true);
@@ -311,12 +390,18 @@ public class MainActivity extends Activity {
         saveEntryButton.setText("ثبت آبشده + بعدی");
         inputWeight.setText("");
         inputAssay.setText("");
+
         if (keepKeyboard) {
             inputWeight.post(() -> {
                 inputWeight.requestFocus();
                 ensureFieldVisible(inputWeight);
-                InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-                if (imm != null) imm.showSoftInput(inputWeight, InputMethodManager.SHOW_IMPLICIT);
+                InputMethodManager imm =
+                        (InputMethodManager)
+                                getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) {
+                    imm.showSoftInput(
+                            inputWeight, InputMethodManager.SHOW_IMPLICIT);
+                }
             });
         }
     }
@@ -335,14 +420,20 @@ public class MainActivity extends Activity {
     private void deleteEntry(int index) {
         if (index < 0 || index >= entries.size()) return;
         entries.remove(index);
-        if (editingIndex == index) resetEntryForm(false);
-        else if (editingIndex > index) editingIndex--;
+
+        if (editingIndex == index) {
+            resetEntryForm(false);
+        } else if (editingIndex > index) {
+            editingIndex--;
+        }
+
         saveEntries();
         refreshAll();
     }
 
     private void refreshEntriesList() {
         entriesBox.removeAllViews();
+
         if (entries.isEmpty()) {
             TextView empty = tv("هنوز آبشده‌ای ثبت نشده است.", 12, MUTED, false);
             empty.setGravity(Gravity.CENTER);
@@ -350,9 +441,11 @@ public class MainActivity extends Activity {
             entriesBox.addView(empty);
             return;
         }
+
         for (int i = 0; i < entries.size(); i++) {
             final int index = i;
             GoldEntry e = entries.get(i);
+
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
@@ -360,17 +453,30 @@ public class MainActivity extends Activity {
             row.setBackground(round(CARD2, 14, STROKE, 1));
             row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
 
-            TextView info = tv("وزن " + num(e.weight) + " g   •   عیار " + num(e.assay), 13, TEXT, true);
-            row.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            TextView info = tv(
+                    "وزن " + num(e.weight) + " g   •   عیار " + num(e.assay),
+                    13, TEXT, true);
+            row.addView(info,
+                    new LinearLayout.LayoutParams(
+                            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
             Button edit = smallButton("ویرایش", GOLD2);
             Button del = smallButton("حذف", RED);
             edit.setOnClickListener(v -> editEntry(index));
             del.setOnClickListener(v -> deleteEntry(index));
-            LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(dp(66), dp(38)); ep.setMarginStart(dp(6));
+
+            LinearLayout.LayoutParams ep =
+                    new LinearLayout.LayoutParams(dp(66), dp(38));
+            ep.setMarginStart(dp(6));
             row.addView(edit, ep);
-            LinearLayout.LayoutParams dpv = new LinearLayout.LayoutParams(dp(52), dp(38)); dpv.setMarginStart(dp(6));
+
+            LinearLayout.LayoutParams dpv =
+                    new LinearLayout.LayoutParams(dp(52), dp(38));
+            dpv.setMarginStart(dp(6));
             row.addView(del, dpv);
-            LinearLayout.LayoutParams rp = matchWrap(); if (i > 0) rp.topMargin = dp(7);
+
+            LinearLayout.LayoutParams rp = matchWrap();
+            if (i > 0) rp.topMargin = dp(7);
             entriesBox.addView(row, rp);
         }
     }
@@ -382,34 +488,65 @@ public class MainActivity extends Activity {
 
     private void recalculate() {
         if (totalWeight == null) return;
-        GoldCalculator.Summary s = GoldCalculator.summarize(entries, null);
+
+        GoldCalculator.Summary s =
+                GoldCalculator.summarize(entries, null);
         totalWeight.setText(num(s.weight));
         averageAssay.setText(num(s.averageAssay));
         entryCount.setText(String.valueOf(s.count));
 
-        double casting = parse(targetAssay, 747);
+        double raiseTarget = parse(raiseTargetAssay, 747);
         double high = parse(barAssay, 995);
-        double silver = parse(silverPercent, 45);
-        GoldCalculator.Adjustment a = GoldCalculator.requiredHighAssayBar(s, casting, high);
-        assayDiff.setText(num(a.assayDifference));
-        requiredBar.setText(num(a.requiredBar));
-        if (!Double.isFinite(a.requiredBar)) {
-            barState.setText("اطلاعات کافی برای محاسبه وجود ندارد"); barState.setTextColor(MUTED);
-        } else if (a.requiredBar > 0) {
-            barState.setText("نیاز به افزودن شمش با عیار بالا"); barState.setTextColor(GOLD2);
-        } else if (a.requiredBar < 0) {
-            barState.setText("عیار آبشده از عیار هدف بالاتر است"); barState.setTextColor(GOLD2);
+        double lowerTarget = parse(lowerTargetAssay, 746);
+        double silver = parse(silverPercent, 32);
+
+        GoldCalculator.Adjustment raise =
+                GoldCalculator.requiredHighAssayBar(
+                        s, raiseTarget, high);
+
+        raiseDiff.setText(num(raise.assayDifference));
+        requiredBar.setText(num(raise.requiredBar));
+
+        if (!Double.isFinite(raise.requiredBar)) {
+            raiseState.setText("اطلاعات یا عیارهای ورودی برای محاسبه افزایش کافی نیست.");
+            raiseState.setTextColor(MUTED);
+        } else if (raise.requiredBar > 0) {
+            raiseState.setText(
+                    "برای رسیدن به عیار " + num(raiseTarget)
+                            + " باید " + num(raise.requiredBar)
+                            + " g شمش عیار " + num(high) + " اضافه شود.");
+            raiseState.setTextColor(GOLD2);
         } else {
-            barState.setText("عیار روی هدف است"); barState.setTextColor(GOLD2);
+            raiseState.setText(
+                    "بالا بردن عیار لازم نیست؛ شمش عیار بالا = ۰ g");
+            raiseState.setTextColor(GOLD2);
         }
 
-        GoldCalculator.Alloy x = GoldCalculator.requiredAlloy(s, casting, silver, s.weight);
-        totalAlloy.setText(num(x.totalAlloyRequired));
-        silverNeed.setText(num(x.silverRequired));
-        nonSilverNeed.setText(num(x.nonSilverRequired));
-        fourPerThousand.setText(num(x.fourPerThousand));
-        finalOther.setText(num(x.finalOtherAlloy));
-        totalAfterAlloy.setText(num(x.totalAfterAlloy));
+        GoldCalculator.Alloy lower =
+                GoldCalculator.requiredAlloy(
+                        s, lowerTarget, silver, s.weight);
+
+        totalAlloy.setText(num(lower.totalAlloyRequired));
+        silverNeed.setText(num(lower.silverRequired));
+        nonSilverNeed.setText(num(lower.nonSilverRequired));
+        fourPerThousand.setText(num(lower.fourPerThousand));
+        finalOther.setText(num(lower.finalOtherAlloy));
+        totalAfterAlloy.setText(num(lower.totalAfterAlloy));
+
+        if (!Double.isFinite(lower.totalAlloyRequired)) {
+            lowerState.setText("اطلاعات یا عیارهای ورودی برای محاسبه کاهش کافی نیست.");
+            lowerState.setTextColor(MUTED);
+        } else if (lower.totalAlloyRequired > 0) {
+            lowerState.setText(
+                    "برای کاهش عیار تا " + num(lowerTarget)
+                            + " باید " + num(lower.totalAlloyRequired)
+                            + " g بار ریخته‌گری اضافه شود.");
+            lowerState.setTextColor(GOLD2);
+        } else {
+            lowerState.setText(
+                    "پایین آوردن عیار لازم نیست؛ بار ریخته‌گری = ۰ g");
+            lowerState.setTextColor(GOLD2);
+        }
 
         double base = parse(splitBase, 800);
         double part = GoldCalculator.split3679(base);
@@ -427,26 +564,17 @@ public class MainActivity extends Activity {
     private void loadEntries() {
         entries.clear();
         String raw = prefs.getString("entries_json", null);
-        if (raw != null && !raw.isEmpty()) {
-            try {
-                JSONArray a = new JSONArray(raw);
-                for (int i = 0; i < a.length(); i++) {
-                    JSONObject o = a.getJSONObject(i);
-                    entries.add(new GoldEntry(1, o.getDouble("weight"), o.getDouble("assay")));
-                }
-            } catch (Exception ignored) {
-                entries.clear();
+        if (raw == null || raw.isEmpty()) return;
+
+        try {
+            JSONArray a = new JSONArray(raw);
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.getJSONObject(i);
+                entries.add(new GoldEntry(
+                        1, o.getDouble("weight"), o.getDouble("assay")));
             }
-        }
-        if (raw == null && entries.isEmpty()) {
-            entries.add(new GoldEntry(1, 84.38, 749));
-            entries.add(new GoldEntry(1, 86.69, 750));
-            entries.add(new GoldEntry(1, 14.00, 749));
-            entries.add(new GoldEntry(1, 23.48, 778));
-            entries.add(new GoldEntry(1, 36.26, 977));
-            entries.add(new GoldEntry(1, 66.07, 749));
-            entries.add(new GoldEntry(1, 42.23, 757));
-            saveEntries();
+        } catch (Exception ignored) {
+            entries.clear();
         }
     }
 
@@ -486,23 +614,58 @@ public class MainActivity extends Activity {
     }
 
     private boolean isEnter(KeyEvent event) {
-        return event != null && event.getAction() == KeyEvent.ACTION_DOWN && event.getKeyCode() == KeyEvent.KEYCODE_ENTER;
+        return event != null
+                && event.getAction() == KeyEvent.ACTION_DOWN
+                && event.getKeyCode() == KeyEvent.KEYCODE_ENTER;
+    }
+
+    private void installImeInsets(View root) {
+        if (android.os.Build.VERSION.SDK_INT < 30) return;
+
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            Insets ime = insets.getInsets(WindowInsets.Type.ime());
+            Insets nav = insets.getInsets(WindowInsets.Type.navigationBars());
+            int imeOnly = Math.max(0, ime.bottom - nav.bottom);
+
+            if (mainScroll != null) {
+                mainScroll.setPadding(
+                        0, 0, 0, imeOnly + dp(28));
+            }
+
+            View focused = getCurrentFocus();
+            if (imeOnly > 0 && focused != null) {
+                ensureFieldVisible(focused);
+            }
+            return insets;
+        });
+        root.requestApplyInsets();
     }
 
     private void ensureFieldVisible(View field) {
         if (mainScroll == null || field == null) return;
-        mainScroll.postDelayed(() -> {
+
+        field.postDelayed(() -> {
+            Rect local = new Rect(
+                    0, 0,
+                    Math.max(field.getWidth(), 1),
+                    field.getHeight() + dp(110));
+            field.requestRectangleOnScreen(local, true);
+
             Rect r = new Rect();
             field.getDrawingRect(r);
             mainScroll.offsetDescendantRectToMyCoords(field, r);
-            int targetY = Math.max(0, r.top - dp(90));
+            int targetY = Math.max(0, r.top - dp(120));
             mainScroll.smoothScrollTo(0, targetY);
-        }, 320);
+        }, 220);
     }
 
     private void hideKeyboard(View field) {
-        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-        if (imm != null) imm.hideSoftInputFromWindow(field.getWindowToken(), 0);
+        InputMethodManager imm =
+                (InputMethodManager)
+                        getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.hideSoftInputFromWindow(field.getWindowToken(), 0);
+        }
         field.clearFocus();
     }
 
@@ -513,17 +676,20 @@ public class MainActivity extends Activity {
         c.setPadding(dp(14), dp(14), dp(14), dp(14));
         c.setBackground(round(CARD, 22, STROKE, 1));
         c.setElevation(dp(2));
+
         TextView t = tv(title, 16, TEXT, true);
         t.setPadding(0, 0, 0, dp(10));
         c.addView(t);
         return c;
     }
 
-    private View metricPair(String l1, TextView v1, String l2, TextView v2) {
+    private View metricPair(
+            String l1, TextView v1, String l2, TextView v2) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         row.addView(metric(l1, v1), weightLp());
+
         LinearLayout.LayoutParams p = weightLp();
         p.setMarginStart(dp(8));
         row.addView(metric(l2, v2), p);
@@ -536,12 +702,22 @@ public class MainActivity extends Activity {
         b.setGravity(Gravity.CENTER);
         b.setPadding(dp(8), dp(10), dp(8), dp(10));
         b.setBackground(round(CARD2, 15, STROKE, 1));
+
         TextView l = tv(label, 11, MUTED, false);
         l.setGravity(Gravity.CENTER);
         value.setGravity(Gravity.CENTER);
+
         b.addView(l);
         b.addView(value);
         return b;
+    }
+
+    private TextView statusView() {
+        TextView v = tv("—", 12, MUTED, true);
+        v.setGravity(Gravity.CENTER);
+        v.setPadding(dp(10), dp(10), dp(10), dp(10));
+        v.setBackground(round(CARD2, 14, STROKE, 1));
+        return v;
     }
 
     private TextView value() {
@@ -550,11 +726,13 @@ public class MainActivity extends Activity {
         return v;
     }
 
-    private View fieldPair(String l1, EditText f1, String l2, EditText f2) {
+    private View fieldPair(
+            String l1, EditText f1, String l2, EditText f2) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         row.addView(labeled(l1, f1), weightLp());
+
         LinearLayout.LayoutParams p = weightLp();
         p.setMarginStart(dp(8));
         row.addView(labeled(l2, f2), p);
@@ -564,14 +742,18 @@ public class MainActivity extends Activity {
     private LinearLayout labeled(String label, EditText f) {
         LinearLayout b = new LinearLayout(this);
         b.setOrientation(LinearLayout.VERTICAL);
+
         TextView l = tv(label, 11, MUTED, false);
         l.setPadding(dp(4), 0, dp(4), dp(5));
         b.addView(l);
-        b.addView(f, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
+        b.addView(f,
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
         return b;
     }
 
-    private EditText field(String initial, String hint, boolean integer) {
+    private EditText field(
+            String initial, String hint, boolean integer) {
         EditText e = new EditText(this);
         e.setTextColor(TEXT);
         e.setHintTextColor(Color.rgb(105, 110, 120));
@@ -582,12 +764,22 @@ public class MainActivity extends Activity {
         e.setPadding(dp(12), 0, dp(12), 0);
         e.setBackground(round(CARD2, 14, STROKE, 1));
         e.setSelectAllOnFocus(true);
-        e.setInputType(integer ? InputType.TYPE_CLASS_NUMBER : InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
+
+        e.setInputType(
+                integer
+                        ? InputType.TYPE_CLASS_NUMBER
+                        : InputType.TYPE_CLASS_NUMBER
+                                | InputType.TYPE_NUMBER_FLAG_DECIMAL
+                                | InputType.TYPE_NUMBER_FLAG_SIGNED);
+
         e.setOnFocusChangeListener((v, hasFocus) -> {
             if (hasFocus) ensureFieldVisible(v);
         });
         e.setOnClickListener(this::ensureFieldVisible);
-        if (initial != null && !initial.isEmpty()) e.setText(initial);
+
+        if (initial != null && !initial.isEmpty()) {
+            e.setText(initial);
+        }
         return e;
     }
 
@@ -602,8 +794,14 @@ public class MainActivity extends Activity {
         b.setMinimumHeight(0);
         b.setMinWidth(0);
         b.setMinimumWidth(0);
-        b.setTextColor(filled ? Color.rgb(22, 16, 3) : GOLD2);
-        b.setBackground(filled ? gradient(new int[]{GOLD2, Color.rgb(184, 130, 23)}, 14) : round(CARD2, 14, STROKE, 1));
+        b.setTextColor(
+                filled ? Color.rgb(22, 16, 3) : GOLD2);
+        b.setBackground(
+                filled
+                        ? gradient(
+                                new int[]{GOLD2, Color.rgb(184, 130, 23)},
+                                14)
+                        : round(CARD2, 14, STROKE, 1));
         return b;
     }
 
@@ -615,27 +813,37 @@ public class MainActivity extends Activity {
         return b;
     }
 
-    private TextView tv(String s, float size, int color, boolean bold) {
+    private TextView tv(
+            String s, float size, int color, boolean bold) {
         TextView t = new TextView(this);
         t.setText(s);
         t.setTextSize(size);
         t.setTextColor(color);
-        t.setTypeface(Typeface.create("sans", bold ? Typeface.BOLD : Typeface.NORMAL));
+        t.setTypeface(
+                Typeface.create(
+                        "sans",
+                        bold ? Typeface.BOLD : Typeface.NORMAL));
         t.setGravity(Gravity.RIGHT);
         t.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         return t;
     }
 
-    private GradientDrawable round(int fill, int radius, int stroke, int strokeWidth) {
+    private GradientDrawable round(
+            int fill, int radius, int stroke, int strokeWidth) {
         GradientDrawable g = new GradientDrawable();
         g.setColor(fill);
         g.setCornerRadius(dp(radius));
-        if (strokeWidth > 0) g.setStroke(dp(strokeWidth), stroke);
+        if (strokeWidth > 0) {
+            g.setStroke(dp(strokeWidth), stroke);
+        }
         return g;
     }
 
-    private GradientDrawable gradient(int[] colors, int radius) {
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, colors);
+    private GradientDrawable gradient(
+            int[] colors, int radius) {
+        GradientDrawable g =
+                new GradientDrawable(
+                        GradientDrawable.Orientation.LEFT_RIGHT, colors);
         g.setCornerRadius(dp(radius));
         return g;
     }
@@ -647,11 +855,14 @@ public class MainActivity extends Activity {
     }
 
     private LinearLayout.LayoutParams matchWrap() {
-        return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        return new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
     }
 
     private LinearLayout.LayoutParams weightLp() {
-        return new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        return new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
     }
 
     private LinearLayout.LayoutParams top8() {
@@ -661,17 +872,26 @@ public class MainActivity extends Activity {
     }
 
     private int dp(float v) {
-        return Math.round(v * getResources().getDisplayMetrics().density);
+        return Math.round(
+                v * getResources().getDisplayMetrics().density);
     }
 
     private double parse(EditText e, double fallback) {
-        return parseString(e == null ? "" : e.getText().toString(), fallback);
+        return parseString(
+                e == null ? "" : e.getText().toString(), fallback);
     }
 
     private double parseString(String raw, double fallback) {
         try {
-            String s = normalizeDigits(raw).trim().replace(',', '.').replace('٫', '.');
-            if (s.isEmpty() || s.equals("-") || s.equals(".")) return fallback;
+            String s = normalizeDigits(raw)
+                    .trim()
+                    .replace(',', '.')
+                    .replace('٫', '.');
+            if (s.isEmpty()
+                    || s.equals("-")
+                    || s.equals(".")) {
+                return fallback;
+            }
             return Double.parseDouble(s);
         } catch (Exception ex) {
             return fallback;
@@ -680,12 +900,16 @@ public class MainActivity extends Activity {
 
     private String normalizeDigits(String s) {
         if (s == null) return "";
-        char[] fa = {'۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'};
-        char[] ar = {'٠','١','٢','٣','٤','٥','٦','٧','٨','٩'};
+
+        char[] fa =
+                {'۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'};
+        char[] ar =
+                {'٠','١','٢','٣','٤','٥','٦','٧','٨','٩'};
+
         String out = s;
         for (int i = 0; i < 10; i++) {
-            out = out.replace(fa[i], (char)('0' + i));
-            out = out.replace(ar[i], (char)('0' + i));
+            out = out.replace(fa[i], (char) ('0' + i));
+            out = out.replace(ar[i], (char) ('0' + i));
         }
         return out;
     }
@@ -697,6 +921,7 @@ public class MainActivity extends Activity {
     }
 
     private void toast(String s) {
-        Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
+        Toast.makeText(
+                this, s, Toast.LENGTH_SHORT).show();
     }
 }
