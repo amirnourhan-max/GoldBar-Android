@@ -5,6 +5,8 @@ namespace GoldBar.Windows;
 
 public sealed class AppSettings
 {
+    public int SettingsVersion { get; set; } = 2;
+
     public string ReportFolder { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
         "GoldBar Reports");
@@ -23,9 +25,14 @@ public sealed class AppSettings
     public int MinimumAfterDecimal { get; set; } = 2;
 
     public bool ReceivePrintKey { get; set; } = true;
-    public bool AutoRead { get; set; } = true;
+    public bool AutoRead { get; set; } = false;
     public bool ReadOnUpArrow { get; set; } = true;
     public bool ShowRawText { get; set; } = false;
+
+    // Auto-read filtering. Manual ↑ reads remain immediate.
+    public bool StableAutoReadOnly { get; set; } = true;
+    public int StableSampleCount { get; set; } = 3;
+    public double StableToleranceGrams { get; set; } = 0.02;
 
     public bool SendQueryOnUpArrow { get; set; } = true;
     public string QueryCommand { get; set; } = "Q";
@@ -43,7 +50,23 @@ public sealed class AppSettings
         {
             if (!File.Exists(SettingsPath)) return new AppSettings();
             var json = File.ReadAllText(SettingsPath);
-            return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            var loaded = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+
+            // v1 settings had AutoRead=true by default. On first upgrade disable it so
+            // the scale no longer continuously overwrites the weight field.
+            if (!json.Contains("\"SettingsVersion\"", StringComparison.Ordinal))
+            {
+                loaded.SettingsVersion = 2;
+                loaded.AutoRead = false;
+                loaded.StableAutoReadOnly = true;
+                loaded.StableSampleCount = 3;
+                loaded.StableToleranceGrams = 0.02;
+                try { loaded.Save(); } catch { }
+            }
+
+            loaded.StableSampleCount = Math.Clamp(loaded.StableSampleCount, 2, 10);
+            loaded.StableToleranceGrams = Math.Clamp(loaded.StableToleranceGrams, 0.001, 5.0);
+            return loaded;
         }
         catch
         {
@@ -53,6 +76,7 @@ public sealed class AppSettings
 
     public void Save()
     {
+        SettingsVersion = 2;
         var dir = Path.GetDirectoryName(SettingsPath)!;
         Directory.CreateDirectory(dir);
         File.WriteAllText(
