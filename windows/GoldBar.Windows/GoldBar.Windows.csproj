@@ -25,6 +25,7 @@
     <Compile Include="UiPrimitives.cs" />
     <Compile Include="ModernMainForm.cs" />
     <Compile Include="ModernLayoutPolish.cs" />
+    <Compile Include="SettingsDrawerPolish.cs" />
     <Compile Include="ModernSplashForm.cs" />
   </ItemGroup>
   <ItemGroup>
