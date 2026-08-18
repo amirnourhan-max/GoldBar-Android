@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">Gold Bar</string>
+    <string name="widget_name">Gold Bar — محاسبه سریع</string>
     <string name="widget_description">ویجت محاسبه سریع Gold Bar</string>
 </resources>
