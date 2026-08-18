@@ -32,12 +32,20 @@ internal static class Program
         {
             main = new ModernMainForm();
             ModernLayoutPolish.Attach(main);
-            SettingsDrawerPolish.Attach(main);
             ApplyTestSize(main);
 
             var page = Environment.GetEnvironmentVariable("GOLDBAR_UI_PAGE");
             if (!string.IsNullOrWhiteSpace(page))
-                main.Shown += (_, _) => main.ShowPageForTest(page);
+            {
+                // Open the requested page only after the native form handle and all
+                // docked controls exist. This is especially important for the
+                // integrated Settings drawer, which must sit above the dashboard.
+                main.Shown += (_, _) =>
+                {
+                    try { main.BeginInvoke((Action)(() => main.ShowPageForTest(page))); }
+                    catch { }
+                };
+            }
 
             if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GOLDBAR_UI_SIZE")))
                 main.WindowState = FormWindowState.Maximized;
@@ -121,7 +129,9 @@ internal static class Program
 
         main.Shown += (_, _) =>
         {
-            var timer = new System.Windows.Forms.Timer { Interval = 1200 };
+            // Give the integrated drawer and SplitContainers time to complete their
+            // first DPI-aware layout before capturing the real installed UI.
+            var timer = new System.Windows.Forms.Timer { Interval = 1800 };
             timer.Tick += (_, _) =>
             {
                 timer.Stop();
