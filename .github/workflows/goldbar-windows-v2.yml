@@ -7,6 +7,11 @@ on:
     paths:
       - 'ci/GoldBar_Windows_Release_v2_Source.zip'
       - '.github/workflows/goldbar-windows-v2.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ci/GoldBar_Windows_Release_v2_Source.zip'
+      - '.github/workflows/goldbar-windows-v2.yml'
   workflow_dispatch:
 
 jobs:
