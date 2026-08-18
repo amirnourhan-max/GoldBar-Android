@@ -19,15 +19,17 @@ public sealed class ScaleReader : IDisposable
 
     public bool IsOpen => _port?.IsOpen == true;
     public double? LastWeight { get; private set; }
+    public string? LastStartError { get; private set; }
 
     public void ApplySettings(AppSettings settings, bool startIfAuto)
     {
         Stop();
         _settings = settings;
+        LastStartError = null;
         if (startIfAuto && settings.AutoRead)
         {
             try { Start(); }
-            catch (Exception ex) { StatusChanged?.Invoke(ex.Message, false); }
+            catch (Exception ex) { LastStartError = ex.Message; }
         }
     }
 
@@ -52,9 +54,18 @@ public sealed class ScaleReader : IDisposable
         };
         p.DataReceived += OnDataReceived;
         p.ErrorReceived += (_, e) => StatusChanged?.Invoke("خطای پورت: " + e.EventType, false);
-        p.Open();
-        _port = p;
-        StatusChanged?.Invoke($"متصل: {_settings.PortName}", true);
+        try
+        {
+            p.Open();
+            _port = p;
+            LastStartError = null;
+        }
+        catch
+        {
+            p.DataReceived -= OnDataReceived;
+            p.Dispose();
+            throw;
+        }
     }
 
     public void Stop()
@@ -128,8 +139,6 @@ public sealed class ScaleReader : IDisposable
         var matches = Regex.Matches(normalized, @"[-+]?\d+(?:\.\d+)?", RegexOptions.CultureInvariant);
         if (matches.Count == 0) return false;
 
-        // A&D frames often contain status text followed by the actual signed weight.
-        // Prefer the last numeric token that can be parsed as a finite number.
         for (var i = matches.Count - 1; i >= 0; i--)
         {
             var token = matches[i].Value;
@@ -181,7 +190,6 @@ public sealed class ScaleReader : IDisposable
                     HandleFrame(frame, settings);
                 }
 
-                // Some scales send a complete fixed frame without CR/LF. Parse it as well once it is reasonably long.
                 if (_buffer.Length >= 8 && TryParseWeight(_buffer.ToString(), settings, out var buffered))
                 {
                     PublishWeight(buffered);
