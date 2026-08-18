@@ -42,9 +42,13 @@ internal static class ModernLayoutPolish
 
             nav.Bounds = new Rectangle(left, navY, width, navHeight);
             nav.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top | AnchorStyles.Bottom;
-            nav.AutoScroll = true;
+            nav.AutoScroll = false;
             foreach (Control item in nav.Controls)
-                item.Width = Math.Max(120, nav.ClientSize.Width - 18);
+            {
+                item.Width = Math.Max(120, nav.ClientSize.Width - 10);
+                item.Height = 40;
+                item.Margin = new Padding(0, 0, 0, 3);
+            }
 
             scale.Bounds = new Rectangle(left, scaleY, width, scaleHeight);
             scale.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
