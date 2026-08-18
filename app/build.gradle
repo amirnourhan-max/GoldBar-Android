@@ -21,8 +21,33 @@ android {
         }
     }
 
+    sourceSets {
+        debug {
+            assets.srcDir("$buildDir/generated/zarpulseAsset")
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+def zarPulseProject = rootProject.project(':zarpulse')
+
+tasks.register('embedZarPulseApk', Copy) {
+    dependsOn ':zarpulse:assembleDebug'
+    from({
+        zarPulseProject.fileTree("${zarPulseProject.buildDir}/outputs/apk/debug") {
+            include '*.apk'
+        }
+    })
+    into("$buildDir/generated/zarpulseAsset")
+    rename { String ignored -> 'zarpulse.apk' }
+}
+
+tasks.configureEach { task ->
+    if (task.name == 'mergeDebugAssets') {
+        task.dependsOn 'embedZarPulseApk'
     }
 }
