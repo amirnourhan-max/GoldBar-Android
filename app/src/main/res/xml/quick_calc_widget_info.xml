@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="280dp"
-    android:minHeight="150dp"
-    android:minResizeWidth="220dp"
-    android:minResizeHeight="130dp"
+    android:minWidth="250dp"
+    android:minHeight="120dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="100dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
     android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_quick_calc"
+    android:previewLayout="@layout/widget_quick_calc"
     android:description="@string/widget_description" />
