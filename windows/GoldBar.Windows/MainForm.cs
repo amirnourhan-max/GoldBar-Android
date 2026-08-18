@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using GoldBar.Core;
 
@@ -13,19 +15,24 @@ public sealed class MainForm : Form
     private static readonly Color TextMain = Color.FromArgb(246, 244, 237);
     private static readonly Color Muted = Color.FromArgb(155, 161, 173);
     private static readonly Color Danger = Color.FromArgb(255, 105, 105);
+    private static readonly Color Success = Color.FromArgb(102, 220, 150);
 
     private readonly List<GoldEntry> _entries = new();
     private readonly FlowLayoutPanel _content = new();
     private readonly DataGridView _grid = new();
+    private readonly ScaleReader _scaleReader = new();
+    private AppSettings _settings = AppSettings.Load();
     private int _editingIndex = -1;
 
     private readonly TextBox _weightInput = NewInput();
     private readonly TextBox _assayInput = NewInput();
     private readonly Button _saveEntryButton = NewButton("ثبت آبشده + بعدی", true);
+    private readonly Label _scaleStatus = NewMiniStatus();
 
     private readonly Label _totalWeight = NewValueLabel();
     private readonly Label _averageAssay = NewValueLabel();
     private readonly Label _entryCount = NewValueLabel();
+    private readonly Label _summaryAfterAlloy = NewValueLabel();
 
     private readonly TextBox _raiseTarget = NewInput("747");
     private readonly TextBox _highBarAssay = NewInput("995");
@@ -38,8 +45,6 @@ public sealed class MainForm : Form
     private readonly Label _totalAlloy = NewValueLabel();
     private readonly Label _silverNeed = NewValueLabel();
     private readonly Label _nonSilverNeed = NewValueLabel();
-    private readonly Label _fourPerThousand = NewValueLabel();
-    private readonly Label _finalOther = NewValueLabel();
     private readonly Label _totalAfter = NewValueLabel();
     private readonly Label _lowerState = NewStatusLabel();
 
@@ -60,21 +65,29 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Gold Bar";
-        Width = 1040;
-        Height = 900;
-        MinimumSize = new Size(840, 650);
+        Text = "Gold Bar (by:Amirnourhan)";
+        Width = 1080;
+        Height = 920;
+        MinimumSize = new Size(860, 660);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Bg;
         ForeColor = TextMain;
         Font = new Font("Segoe UI", 10f);
         RightToLeft = RightToLeft.Yes;
         AutoScaleMode = AutoScaleMode.Dpi;
+        KeyPreview = true;
 
         BuildUi();
         BindEvents();
         LoadEntries();
+        ApplyScaleSettings();
         RefreshAll();
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _scaleReader.Dispose();
+        base.OnFormClosed(e);
     }
 
     private void BuildUi()
@@ -90,7 +103,6 @@ public sealed class MainForm : Form
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-
         root.Controls.Add(BuildHeader(), 0, 0);
 
         _content.Dock = DockStyle.Fill;
@@ -108,6 +120,7 @@ public sealed class MainForm : Form
         _content.Controls.Add(BuildLowerCard());
         _content.Controls.Add(BuildListCard());
         _content.Controls.Add(BuildToolsCard());
+        _content.Controls.Add(BuildReportCard());
 
         root.Controls.Add(_content, 0, 1);
         Controls.Add(root);
@@ -115,7 +128,17 @@ public sealed class MainForm : Form
 
     private Control BuildHeader()
     {
-        var panel = new Panel { Dock = DockStyle.Fill, BackColor = Bg, Padding = new Padding(22, 14, 22, 10) };
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Bg,
+            Padding = new Padding(22, 14, 22, 10),
+            ColumnCount = 3,
+            RightToLeft = RightToLeft.Yes
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
 
         var badge = new Label
         {
@@ -126,51 +149,107 @@ public sealed class MainForm : Form
             ForeColor = Color.FromArgb(22, 16, 3),
             TextAlign = ContentAlignment.MiddleCenter,
             Font = new Font("Segoe UI", 17f, FontStyle.Bold),
-            Dock = DockStyle.Right,
-            Margin = new Padding(0, 0, 12, 0)
+            Margin = new Padding(6, 0, 6, 0)
         };
 
-        var titlePanel = new Panel { Dock = DockStyle.Fill, BackColor = Bg };
-        var title = new Label
+        var titlePanel = new FlowLayoutPanel
         {
-            Text = "GOLD BAR",
+            Dock = DockStyle.Fill,
+            AutoSize = false,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            BackColor = Bg,
+            Padding = new Padding(0, 0, 8, 0),
+            RightToLeft = RightToLeft.No
+        };
+        var titleRow = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            BackColor = Bg,
+            RightToLeft = RightToLeft.No
+        };
+        titleRow.Controls.Add(new Label
+        {
+            Text = "GOLD BAR ",
             ForeColor = TextMain,
             Font = new Font("Segoe UI", 23f, FontStyle.Bold),
+            AutoSize = true
+        });
+        var by = new LinkLabel
+        {
+            Text = "(by:Amirnourhan)",
+            LinkColor = Gold,
+            ActiveLinkColor = Gold,
+            VisitedLinkColor = Gold,
+            Font = new Font("Segoe UI", 10.5f, FontStyle.Bold),
             AutoSize = true,
-            RightToLeft = RightToLeft.No,
-            Location = new Point(0, 4)
+            Padding = new Padding(0, 14, 0, 0),
+            Cursor = Cursors.Hand
         };
-        var subtitle = new Label
+        by.LinkClicked += (_, _) => OpenInstagram();
+        titleRow.Controls.Add(by);
+        titlePanel.Controls.Add(titleRow);
+        titlePanel.Controls.Add(new Label
         {
             Text = "محاسبه عیار، شمش و بار ریخته‌گری — نسخه ویندوز",
             ForeColor = Muted,
             Font = new Font("Segoe UI", 10f),
             AutoSize = true,
-            Location = new Point(0, 46)
-        };
-        titlePanel.Controls.Add(title);
-        titlePanel.Controls.Add(subtitle);
+            RightToLeft = RightToLeft.Yes
+        });
 
-        panel.Controls.Add(titlePanel);
-        panel.Controls.Add(badge);
+        var settings = NewButton("⚙ تنظیمات", false);
+        settings.Dock = DockStyle.Fill;
+        settings.Click += (_, _) => OpenSettings();
+
+        panel.Controls.Add(badge, 0, 0);
+        panel.Controls.Add(titlePanel, 1, 0);
+        panel.Controls.Add(settings, 2, 0);
         return panel;
     }
 
     private Control BuildSummaryCard()
     {
         var card = NewCard("خلاصه آبشده‌ها");
-        AddMetricRow(card, ("کل وزن آبشده (g)", _totalWeight), ("عیار میانگین", _averageAssay), ("تعداد آبشده", _entryCount));
+        AddMetricRow(card,
+            ("کل وزن آبشده (g)", _totalWeight),
+            ("عیار میانگین", _averageAssay),
+            ("تعداد آبشده", _entryCount),
+            ("وزن پس از بار (g)", _summaryAfterAlloy));
         return card;
     }
 
     private Control BuildEntryCard()
     {
         var card = NewCard("ثبت سریع آبشده");
-        AddHint(card, "وزن → Enter → عیار → Enter. بعد از ثبت، فیلد وزن برای آبشده بعدی آماده می‌شود.");
+        AddHint(card, "وزن را دستی بنویس یا داخل فیلد وزن کلید ↑ را بزن تا از ترازو خوانده شود؛ Enter → عیار → Enter برای ثبت.");
         AddFieldRow(card, ("وزن آبشده (g)", _weightInput), ("عیار آبشده", _assayInput));
+
+        _scaleStatus.Text = "● ترازو: " + _settings.PortName;
+        card.Controls.Add(_scaleStatus);
+
+        var buttons = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            ColumnCount = 2,
+            BackColor = Card,
+            Margin = new Padding(0, 7, 0, 0)
+        };
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 80));
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20));
         _saveEntryButton.Height = 44;
-        _saveEntryButton.Dock = DockStyle.Top;
-        card.Controls.Add(_saveEntryButton);
+        _saveEntryButton.Dock = DockStyle.Fill;
+        var clear = NewButton("پاک‌کردن همه", false);
+        clear.ForeColor = Danger;
+        clear.Height = 44;
+        clear.Dock = DockStyle.Fill;
+        clear.Click += (_, _) => ClearAll();
+        buttons.Controls.Add(_saveEntryButton, 0, 0);
+        buttons.Controls.Add(clear, 1, 0);
+        card.Controls.Add(buttons);
         return card;
     }
 
@@ -190,8 +269,7 @@ public sealed class MainForm : Form
         AddHint(card, "این بخش فرمول مستقل دارد و فقط وقتی عیار میانگین بالاتر از عیار هدف کاهش باشد اجرا می‌شود.");
         AddFieldRow(card, ("عیار هدف کاهش", _lowerTarget), ("درصد نقره از بار", _silverPercent));
         AddMetricRow(card, ("کل بار مورد نیاز (g)", _totalAlloy), ("نقره مورد نیاز (g)", _silverNeed));
-        AddMetricRow(card, ("بار بدون نقره (g)", _nonSilverNeed), ("۰.۴٪ کل وزن (g)", _fourPerThousand));
-        AddMetricRow(card, ("بار نهایی دیگر (g)", _finalOther), ("وزن پس از بار (g)", _totalAfter));
+        AddMetricRow(card, ("بار بدون نقره (g)", _nonSilverNeed), ("وزن پس از بار (g)", _totalAfter));
         card.Controls.Add(WrapStatus(_lowerState));
         return card;
     }
@@ -199,24 +277,6 @@ public sealed class MainForm : Form
     private Control BuildListCard()
     {
         var card = NewCard("لیست آبشده‌ها");
-
-        var clear = NewButton("پاک‌کردن همه", false);
-        clear.ForeColor = Danger;
-        clear.Width = 140;
-        clear.Height = 38;
-        clear.Click += (_, _) => ClearAll();
-        var clearHost = new FlowLayoutPanel
-        {
-            AutoSize = true,
-            Dock = DockStyle.Top,
-            FlowDirection = FlowDirection.RightToLeft,
-            WrapContents = false,
-            BackColor = Card,
-            Padding = new Padding(0, 0, 0, 8)
-        };
-        clearHost.Controls.Add(clear);
-        card.Controls.Add(clearHost);
-
         ConfigureGrid();
         card.Controls.Add(_grid);
         return card;
@@ -224,22 +284,32 @@ public sealed class MainForm : Form
 
     private Control BuildToolsCard()
     {
-        var card = NewCard("ابزارهای سریع اکسل");
+        var card = NewCard("محاسبه سریع");
         AddFieldRow(card, ("عدد پایه تقسیم", _splitBase));
         AddMetricRow(card, ("۳۶.۷۹٪", _split3679), ("۶۳.۲۱٪", _split6321));
 
-        var sep = new Label
+        card.Controls.Add(new Label
         {
             Text = "اصلاح وزن برای افت عیار",
             ForeColor = TextMain,
             Font = new Font("Segoe UI", 10.5f, FontStyle.Bold),
             AutoSize = true,
             Padding = new Padding(0, 12, 0, 6)
-        };
-        card.Controls.Add(sep);
-
+        });
         AddFieldRow(card, ("وزن پایه", _correctionWeight), ("عیار هدف", _correctionTarget), ("مقدار افت عیار", _correctionDrop));
         AddMetricRow(card, ("بار افزوده (g)", _correctionAdd), ("جمع وزن (g)", _correctionTotal));
+        return card;
+    }
+
+    private Control BuildReportCard()
+    {
+        var card = NewCard("گزارش");
+        AddHint(card, "با یک کلیک، گزارش کامل با تاریخ و ساعت در پوشه‌ای که از تنظیمات تعیین کرده‌ای ذخیره می‌شود.");
+        var save = NewButton("ذخیره گزارش کامل", true);
+        save.Height = 48;
+        save.Dock = DockStyle.Top;
+        save.Click += (_, _) => SaveReport();
+        card.Controls.Add(save);
         return card;
     }
 
@@ -247,8 +317,14 @@ public sealed class MainForm : Form
     {
         _saveEntryButton.Click += (_, _) => SaveEntry();
 
-        _weightInput.KeyDown += (_, e) =>
+        _weightInput.KeyDown += async (_, e) =>
         {
+            if (e.KeyCode == Keys.Up && _settings.ReadOnUpArrow)
+            {
+                e.SuppressKeyPress = true;
+                await ReadScaleIntoWeightAsync();
+                return;
+            }
             if (e.KeyCode == Keys.Enter)
             {
                 e.SuppressKeyPress = true;
@@ -274,6 +350,93 @@ public sealed class MainForm : Form
             box.TextChanged += (_, _) => Recalculate();
             box.Enter += (_, _) => box.SelectAll();
         }
+
+        _scaleReader.WeightReceived += weight =>
+        {
+            if (IsDisposed) return;
+            BeginInvoke(() =>
+            {
+                _scaleStatus.Text = "● وزن ترازو: " + Num(weight) + " g";
+                _scaleStatus.ForeColor = Success;
+                if (_settings.AutoRead && _weightInput.Focused)
+                {
+                    _weightInput.Text = Num(weight);
+                    _weightInput.SelectAll();
+                }
+            });
+        };
+        _scaleReader.StatusChanged += (text, ok) =>
+        {
+            if (IsDisposed) return;
+            BeginInvoke(() =>
+            {
+                _scaleStatus.Text = "● " + text;
+                _scaleStatus.ForeColor = ok ? Success : Danger;
+            });
+        };
+        _scaleReader.RawReceived += raw =>
+        {
+            if (!_settings.ShowRawText || IsDisposed) return;
+            BeginInvoke(() =>
+            {
+                var oneLine = raw.Replace("\r", " ").Replace("\n", " ").Trim();
+                if (oneLine.Length > 80) oneLine = oneLine[..80];
+                if (oneLine.Length > 0) _scaleStatus.Text = "● RX: " + oneLine;
+            });
+        };
+    }
+
+    private void ApplyScaleSettings()
+    {
+        _scaleStatus.Text = "● ترازو: " + _settings.PortName + " / " + _settings.BaudRate;
+        _scaleStatus.ForeColor = Muted;
+        _scaleReader.ApplySettings(_settings, _settings.AutoRead);
+    }
+
+    private async Task ReadScaleIntoWeightAsync()
+    {
+        _scaleStatus.Text = "● در حال دریافت وزن از ترازو…";
+        _scaleStatus.ForeColor = Gold;
+        _weightInput.Enabled = false;
+        try
+        {
+            var weight = await _scaleReader.ReadNowAsync();
+            _weightInput.Text = Num(weight);
+            _weightInput.SelectAll();
+            _scaleStatus.Text = "● وزن دریافت شد: " + Num(weight) + " g";
+            _scaleStatus.ForeColor = Success;
+        }
+        catch (Exception ex)
+        {
+            _scaleStatus.Text = "● " + ex.Message;
+            _scaleStatus.ForeColor = Danger;
+        }
+        finally
+        {
+            _weightInput.Enabled = true;
+            _weightInput.Focus();
+        }
+    }
+
+    private void OpenSettings()
+    {
+        using var form = new SettingsForm(_settings);
+        if (form.ShowDialog(this) != DialogResult.OK) return;
+        _settings = form.ResultSettings;
+        ApplyScaleSettings();
+    }
+
+    private static void OpenInstagram()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "https://www.instagram.com/4mirnourhan/",
+                UseShellExecute = true
+            });
+        }
+        catch { }
     }
 
     private void SaveEntry()
@@ -288,10 +451,8 @@ public sealed class MainForm : Form
         }
 
         var item = new GoldEntry(weight, assay);
-        if (_editingIndex >= 0 && _editingIndex < _entries.Count)
-            _entries[_editingIndex] = item;
-        else
-            _entries.Add(item);
+        if (_editingIndex >= 0 && _editingIndex < _entries.Count) _entries[_editingIndex] = item;
+        else _entries.Add(item);
 
         PersistEntries();
         _editingIndex = -1;
@@ -325,10 +486,7 @@ public sealed class MainForm : Form
             _weightInput.Clear();
             _assayInput.Clear();
         }
-        else if (_editingIndex > index)
-        {
-            _editingIndex--;
-        }
+        else if (_editingIndex > index) _editingIndex--;
         PersistEntries();
         RefreshAll();
     }
@@ -388,9 +546,8 @@ public sealed class MainForm : Form
         _totalAlloy.Text = Num(lower.TotalAlloyRequired);
         _silverNeed.Text = Num(lower.SilverRequired);
         _nonSilverNeed.Text = Num(lower.NonSilverRequired);
-        _fourPerThousand.Text = Num(lower.FourPerThousand);
-        _finalOther.Text = Num(lower.FinalOtherAlloy);
         _totalAfter.Text = Num(lower.TotalAfterAlloy);
+        _summaryAfterAlloy.Text = Num(lower.TotalAfterAlloy);
         if (!double.IsFinite(lower.TotalAlloyRequired))
         {
             _lowerState.Text = "برای محاسبه کاهش عیار، ابتدا آبشده معتبر ثبت کن.";
@@ -420,6 +577,65 @@ public sealed class MainForm : Form
         _correctionTotal.Text = Num(cw + add);
     }
 
+    private void SaveReport()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_settings.ReportFolder))
+            {
+                OpenSettings();
+                if (string.IsNullOrWhiteSpace(_settings.ReportFolder)) return;
+            }
+            Directory.CreateDirectory(_settings.ReportFolder);
+            var now = DateTime.Now;
+            var path = Path.Combine(_settings.ReportFolder, $"GoldBar_{now:yyyy-MM-dd_HH-mm-ss}.txt");
+            File.WriteAllText(path, BuildCompactReport(now), new UTF8Encoding(true));
+            MessageBox.Show(this, "گزارش ذخیره شد:\n" + path, "ذخیره گزارش", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "ذخیره گزارش انجام نشد:\n" + ex.Message, "خطای گزارش", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private string BuildCompactReport(DateTime now)
+    {
+        var summary = GoldCalculator.Summarize(_entries);
+        var raiseTarget = Parse(_raiseTarget.Text, 747);
+        var high = Parse(_highBarAssay.Text, 995);
+        var raise = GoldCalculator.RequiredHighAssayBar(summary, raiseTarget, high);
+        var lowerTarget = Parse(_lowerTarget.Text, 746);
+        var silverPercent = Parse(_silverPercent.Text, 32);
+        var lower = GoldCalculator.RequiredAlloy(summary, lowerTarget, silverPercent, summary.Weight);
+        var splitBase = Parse(_splitBase.Text, 800);
+        var split = GoldCalculator.Split3679(splitBase);
+        var cw = Parse(_correctionWeight.Text, 250);
+        var ct = Parse(_correctionTarget.Text, 750);
+        var cd = Parse(_correctionDrop.Text, 1);
+        var add = GoldCalculator.CorrectionAddition(cw, ct, cd);
+
+        var b = new StringBuilder();
+        b.AppendLine("GOLD BAR (by:Amirnourhan)");
+        b.AppendLine($"تاریخ و ساعت: {now:yyyy/MM/dd HH:mm:ss}");
+        b.AppendLine();
+        b.Append("آبشده‌ها: ");
+        if (_entries.Count == 0) b.Append("—");
+        else
+        {
+            for (var i = 0; i < _entries.Count; i++)
+            {
+                if (i > 0) b.Append(" | ");
+                b.Append($"{i + 1}) {Num(_entries[i].Weight)}g @ {Num(_entries[i].Assay)}");
+            }
+        }
+        b.AppendLine();
+        b.AppendLine($"خلاصه: وزن کل {Num(summary.Weight)}g | عیار میانگین {Num(summary.AverageAssay)} | تعداد {summary.Count} | وزن پس از بار {Num(lower.TotalAfterAlloy)}g");
+        b.AppendLine($"افزایش عیار: هدف {Num(raiseTarget)} | شمش {Num(high)} | شمش مورد نیاز {Num(raise.RequiredHighBar)}g");
+        b.AppendLine($"کاهش عیار: هدف {Num(lowerTarget)} | کل بار {Num(lower.TotalAlloyRequired)}g | نقره {Num(lower.SilverRequired)}g | بار بدون نقره {Num(lower.NonSilverRequired)}g");
+        b.AppendLine($"محاسبه سریع: پایه {Num(splitBase)} → 36.79%={Num(split)} / 63.21%={Num(splitBase - split)} | اصلاح افت: وزن {Num(cw)}، هدف {Num(ct)}، افت {Num(cd)} → افزوده {Num(add)}g، جمع {Num(cw + add)}g");
+        return b.ToString();
+    }
+
     private void ConfigureGrid()
     {
         _grid.Height = 250;
@@ -447,25 +663,8 @@ public sealed class MainForm : Form
 
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Weight", HeaderText = "وزن (g)", FillWeight = 32 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Assay", HeaderText = "عیار", FillWeight = 26 });
-        _grid.Columns.Add(new DataGridViewButtonColumn
-        {
-            Name = "Edit",
-            HeaderText = "",
-            Text = "ویرایش",
-            UseColumnTextForButtonValue = true,
-            FillWeight = 21,
-            FlatStyle = FlatStyle.Flat
-        });
-        _grid.Columns.Add(new DataGridViewButtonColumn
-        {
-            Name = "Delete",
-            HeaderText = "",
-            Text = "حذف",
-            UseColumnTextForButtonValue = true,
-            FillWeight = 21,
-            FlatStyle = FlatStyle.Flat
-        });
-
+        _grid.Columns.Add(new DataGridViewButtonColumn { Name = "Edit", HeaderText = "", Text = "ویرایش", UseColumnTextForButtonValue = true, FillWeight = 21, FlatStyle = FlatStyle.Flat });
+        _grid.Columns.Add(new DataGridViewButtonColumn { Name = "Delete", HeaderText = "", Text = "حذف", UseColumnTextForButtonValue = true, FillWeight = 21, FlatStyle = FlatStyle.Flat });
         _grid.CellContentClick += (_, e) =>
         {
             if (e.RowIndex < 0) return;
@@ -477,8 +676,7 @@ public sealed class MainForm : Form
     private void RefreshGrid()
     {
         _grid.Rows.Clear();
-        foreach (var e in _entries)
-            _grid.Rows.Add(Num(e.Weight), Num(e.Assay), "ویرایش", "حذف");
+        foreach (var e in _entries) _grid.Rows.Add(Num(e.Weight), Num(e.Assay), "ویرایش", "حذف");
     }
 
     private void LoadEntries()
@@ -492,10 +690,7 @@ public sealed class MainForm : Form
             _entries.Clear();
             _entries.AddRange(loaded.Where(e => e.Weight > 0 && e.Assay > 0 && e.Assay <= 1000));
         }
-        catch
-        {
-            // Keep the app usable even if a previous local file is malformed.
-        }
+        catch { }
     }
 
     private void PersistEntries()
@@ -508,16 +703,14 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "ذخیره اطلاعات روی ویندوز انجام نشد:\n" + ex.Message, "خطای ذخیره",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, "ذخیره اطلاعات روی ویندوز انجام نشد:\n" + ex.Message, "خطای ذخیره", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
     private void ResizeCards()
     {
         var width = Math.Max(400, _content.ClientSize.Width - 32);
-        foreach (Control c in _content.Controls)
-            c.Width = width;
+        foreach (Control c in _content.Controls) c.Width = width;
     }
 
     private static TableLayoutPanel NewCard(string title)
@@ -571,8 +764,7 @@ public sealed class MainForm : Form
             RightToLeft = RightToLeft.Yes
         };
         for (var i = 0; i < fields.Length; i++) row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / fields.Length));
-        foreach (var field in fields)
-            row.Controls.Add(LabeledInput(field.Label, field.Box));
+        foreach (var field in fields) row.Controls.Add(LabeledInput(field.Label, field.Box));
         card.Controls.Add(row);
     }
 
@@ -587,13 +779,7 @@ public sealed class MainForm : Form
             BackColor = Card,
             Margin = new Padding(4)
         };
-        host.Controls.Add(new Label
-        {
-            Text = label,
-            ForeColor = Muted,
-            AutoSize = true,
-            Padding = new Padding(2, 0, 2, 4)
-        }, 0, 0);
+        host.Controls.Add(new Label { Text = label, ForeColor = Muted, AutoSize = true, Padding = new Padding(2, 0, 2, 4) }, 0, 0);
         box.Dock = DockStyle.Top;
         host.Controls.Add(box, 0, 1);
         return host;
@@ -612,8 +798,7 @@ public sealed class MainForm : Form
             RightToLeft = RightToLeft.Yes
         };
         for (var i = 0; i < metrics.Length; i++) row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / metrics.Length));
-        foreach (var metric in metrics)
-            row.Controls.Add(MetricBox(metric.Label, metric.Value));
+        foreach (var metric in metrics) row.Controls.Add(MetricBox(metric.Label, metric.Value));
         card.Controls.Add(row);
     }
 
@@ -629,14 +814,7 @@ public sealed class MainForm : Form
             ColumnCount = 1,
             RowCount = 2
         };
-        var l = new Label
-        {
-            Text = label,
-            ForeColor = Muted,
-            AutoSize = true,
-            Dock = DockStyle.Top,
-            TextAlign = ContentAlignment.MiddleCenter
-        };
+        var l = new Label { Text = label, ForeColor = Muted, AutoSize = true, Dock = DockStyle.Top, TextAlign = ContentAlignment.MiddleCenter };
         value.Dock = DockStyle.Top;
         value.TextAlign = ContentAlignment.MiddleCenter;
         p.Controls.Add(l, 0, 0);
@@ -652,21 +830,18 @@ public sealed class MainForm : Form
         return host;
     }
 
-    private static TextBox NewInput(string? value = null)
+    private static TextBox NewInput(string? value = null) => new()
     {
-        return new TextBox
-        {
-            Text = value ?? string.Empty,
-            BackColor = Card2,
-            ForeColor = TextMain,
-            BorderStyle = BorderStyle.FixedSingle,
-            Font = new Font("Segoe UI", 11f),
-            TextAlign = HorizontalAlignment.Right,
-            RightToLeft = RightToLeft.No,
-            Height = 34,
-            Margin = new Padding(4)
-        };
-    }
+        Text = value ?? string.Empty,
+        BackColor = Card2,
+        ForeColor = TextMain,
+        BorderStyle = BorderStyle.FixedSingle,
+        Font = new Font("Segoe UI", 11f),
+        TextAlign = HorizontalAlignment.Right,
+        RightToLeft = RightToLeft.No,
+        Height = 34,
+        Margin = new Padding(4)
+    };
 
     private static Button NewButton(string text, bool filled)
     {
@@ -703,6 +878,15 @@ public sealed class MainForm : Form
         AutoEllipsis = true
     };
 
+    private static Label NewMiniStatus() => new()
+    {
+        Text = "● ترازو",
+        ForeColor = Muted,
+        AutoSize = true,
+        Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+        Padding = new Padding(4, 4, 4, 6)
+    };
+
     private static double Parse(string raw, double fallback)
     {
         try
@@ -710,10 +894,7 @@ public sealed class MainForm : Form
             var s = NormalizeDigits(raw).Trim().Replace('٫', '.').Replace(',', '.');
             return double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : fallback;
         }
-        catch
-        {
-            return fallback;
-        }
+        catch { return fallback; }
     }
 
     private static string NormalizeDigits(string raw)
