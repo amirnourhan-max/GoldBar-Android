@@ -5,7 +5,7 @@ namespace GoldBar.Windows;
 
 public sealed class AppSettings
 {
-    public int SettingsVersion { get; set; } = 3;
+    public int SettingsVersion { get; set; } = 4;
 
     public string ReportFolder { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
@@ -29,7 +29,8 @@ public sealed class AppSettings
     public bool ReadOnUpArrow { get; set; } = true;
     public bool ShowRawText { get; set; } = false;
 
-    // Auto-read filtering. Manual ↑ reads remain immediate.
+    // Auto-read filtering. Manual ↑ requests stay responsive while continuous
+    // streaming is only published after several close readings.
     public bool StableAutoReadOnly { get; set; } = true;
     public int StableSampleCount { get; set; } = 3;
     public double StableToleranceGrams { get; set; } = 0.02;
@@ -39,9 +40,12 @@ public sealed class AppSettings
     public string QueryLineEnding { get; set; } = "CRLF";
     public int ReadTimeoutMs { get; set; } = 1800;
 
-    // Operator-adjustable dashboard layout.
-    public int DashboardSettingsWidth { get; set; } = 360;
-    public int DashboardEntryHeight { get; set; } = 285;
+    // Dashboard split positions are stored as percentages so the layout remains
+    // usable on different monitor sizes/DPI settings.
+    public int DashboardUpperPercent { get; set; } = 47;
+    public int DashboardEntryPercent { get; set; } = 67;
+    public int DashboardRaisePercent { get; set; } = 34;
+    public int DashboardLowerPercent { get; set; } = 50;
 
     public static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -56,25 +60,29 @@ public sealed class AppSettings
             var json = File.ReadAllText(SettingsPath);
             var loaded = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
 
-            // Legacy builds defaulted AutoRead to true. Disable it on migration so
-            // streaming scale noise never continuously overwrites the weight field.
+            // Older builds defaulted AutoRead to true. Migrate once so scale noise
+            // does not continuously overwrite the weight field on existing installs.
             if (!json.Contains("\"SettingsVersion\"", StringComparison.Ordinal)
-                || loaded.SettingsVersion < 3)
+                || loaded.SettingsVersion < 4)
             {
-                loaded.SettingsVersion = 3;
+                loaded.SettingsVersion = 4;
                 loaded.AutoRead = false;
                 loaded.StableAutoReadOnly = true;
                 loaded.StableSampleCount = 3;
                 loaded.StableToleranceGrams = 0.02;
-                loaded.DashboardSettingsWidth = 360;
-                loaded.DashboardEntryHeight = 285;
+                loaded.DashboardUpperPercent = 47;
+                loaded.DashboardEntryPercent = 67;
+                loaded.DashboardRaisePercent = 34;
+                loaded.DashboardLowerPercent = 50;
                 try { loaded.Save(); } catch { }
             }
 
             loaded.StableSampleCount = Math.Clamp(loaded.StableSampleCount, 2, 10);
             loaded.StableToleranceGrams = Math.Clamp(loaded.StableToleranceGrams, 0.001, 5.0);
-            loaded.DashboardSettingsWidth = Math.Clamp(loaded.DashboardSettingsWidth, 300, 520);
-            loaded.DashboardEntryHeight = Math.Clamp(loaded.DashboardEntryHeight, 220, 520);
+            loaded.DashboardUpperPercent = Math.Clamp(loaded.DashboardUpperPercent, 30, 70);
+            loaded.DashboardEntryPercent = Math.Clamp(loaded.DashboardEntryPercent, 45, 82);
+            loaded.DashboardRaisePercent = Math.Clamp(loaded.DashboardRaisePercent, 22, 55);
+            loaded.DashboardLowerPercent = Math.Clamp(loaded.DashboardLowerPercent, 30, 70);
             return loaded;
         }
         catch
@@ -85,7 +93,7 @@ public sealed class AppSettings
 
     public void Save()
     {
-        SettingsVersion = 3;
+        SettingsVersion = 4;
         var dir = Path.GetDirectoryName(SettingsPath)!;
         Directory.CreateDirectory(dir);
         File.WriteAllText(
