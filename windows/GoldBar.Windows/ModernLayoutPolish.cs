@@ -26,14 +26,14 @@ internal static class ModernLayoutPolish
             var left = side.Padding.Left;
             var top = side.Padding.Top;
             var width = Math.Max(150, side.ClientSize.Width - side.Padding.Horizontal);
-            var footerHeight = 28;
-            var scaleHeight = 145;
-            var gap = 10;
-            var brandHeight = side.ClientSize.Height < 760 ? 174 : 194;
+            const int footerHeight = 28;
+            const int scaleHeight = 145;
+            const int brandHeight = 204;
+            const int gap = 10;
             var footerY = side.ClientSize.Height - side.Padding.Bottom - footerHeight;
             var scaleY = footerY - gap - scaleHeight;
             var navY = top + brandHeight + gap;
-            var navHeight = Math.Max(260, scaleY - gap - navY);
+            var navHeight = Math.Max(210, scaleY - gap - navY);
 
             foreach (var c in new Control[] { brand, nav, scale, footer }) c.Dock = DockStyle.None;
 
@@ -42,8 +42,9 @@ internal static class ModernLayoutPolish
 
             nav.Bounds = new Rectangle(left, navY, width, navHeight);
             nav.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top | AnchorStyles.Bottom;
+            nav.AutoScroll = true;
             foreach (Control item in nav.Controls)
-                item.Width = Math.Max(120, nav.ClientSize.Width - 10);
+                item.Width = Math.Max(120, nav.ClientSize.Width - 18);
 
             scale.Bounds = new Rectangle(left, scaleY, width, scaleHeight);
             scale.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
