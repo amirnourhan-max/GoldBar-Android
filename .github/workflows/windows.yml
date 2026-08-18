@@ -38,14 +38,15 @@ jobs:
       - name: Verify Windows v1.5 implementation
         shell: pwsh
         run: |
-          if (!(Select-String -Path windows/GoldBar.Windows/DesktopMainFormV2.cs -Pattern 'کل بار مورد نیاز' -Quiet)) { throw 'Total alloy metric missing' }
-          if (!(Select-String -Path windows/GoldBar.Windows/DesktopMainFormV2.cs -Pattern 'ResizableCardPanel' -Quiet)) { throw 'Resizable cards missing' }
-          if (!(Select-String -Path windows/GoldBar.Windows/DesktopMainFormV2.cs -Pattern 'SettingsDrawer' -Quiet)) { throw 'Integrated settings drawer missing' }
-          if (!(Select-String -Path windows/GoldBar.Windows/DesktopMainFormV2.cs -Pattern 'Keys.Up' -Quiet)) { throw 'Up-arrow scale read missing' }
-          if (!(Select-String -Path windows/GoldBar.Windows/SettingsDrawer.cs -Pattern 'StableSampleCount' -Quiet)) { throw 'Scale stability controls missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/ModernMainForm.cs -Pattern 'کل بار مورد نیاز' -Quiet)) { throw 'Total alloy metric missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/ModernMainForm.cs -Pattern 'SplitContainer' -Quiet)) { throw 'Manual card resizing missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/ModernMainForm.cs -Pattern 'OpenSettingsDrawer' -Quiet)) { throw 'Integrated settings drawer missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/ModernMainForm.cs -Pattern 'Keys.Up' -Quiet)) { throw 'Up-arrow scale read missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/ModernMainForm.cs -Pattern 'StableSampleCount' -Quiet)) { throw 'Scale stability controls missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/AppSettings.cs -Pattern 'AutoRead.*false' -Quiet)) { throw 'AutoRead default must be off' }
           if (!(Select-String -Path windows/GoldBar.Windows/ScaleReader.cs -Pattern 'IsStableSeries' -Quiet)) { throw 'Scale stability filter missing' }
-          if (!(Select-String -Path windows/GoldBar.Windows/SplashForm.cs -Pattern 'در حال بارگذاری' -Quiet)) { throw 'Loading splash missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/ModernSplashForm.cs -Pattern 'در حال بارگذاری' -Quiet)) { throw 'Loading splash missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/Program.cs -Pattern 'ModernMainForm' -Quiet)) { throw 'Modern shell is not active' }
           if (!(Select-String -Path windows/GoldBar.Windows/GoldBar.Windows.csproj -Pattern '<ApplicationIcon>AppIcon.ico</ApplicationIcon>' -Quiet)) { throw 'Executable icon missing' }
           if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'GoldBar-Setup-v1.5.0' -Quiet)) { throw 'Installer v1.5.0 definition missing' }
           if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'SetupIconFile' -Quiet)) { throw 'Installer icon missing' }
@@ -141,7 +142,7 @@ jobs:
           foreach ($page in @('dashboard','entries','settings')) {
             $shot = Join-Path $buildDir ("ui-compact-" + $page + ".png")
             $env:GOLDBAR_UI_PAGE = $page
-            $env:GOLDBAR_UI_SIZE = '1180x740'
+            $env:GOLDBAR_UI_SIZE = '1180x760'
             $env:GOLDBAR_UI_SCREENSHOT = $shot
             $p = Start-Process -FilePath $exe -PassThru
             if (!$p.WaitForExit(16000)) { Stop-Process -Id $p.Id -Force; throw "Compact visual test timed out on $page" }
