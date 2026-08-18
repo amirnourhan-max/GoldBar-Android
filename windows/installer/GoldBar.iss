@@ -1,5 +1,5 @@
 #define MyAppName "Gold Bar"
-#define MyAppVersion "1.5.0"
+#define MyAppVersion "1.5.1"
 #define MyAppPublisher "Amirnourhan"
 #define MyAppExeName "GoldBar.exe"
 #define PublishDir "..\..\build\windows-installed"
@@ -14,7 +14,7 @@ DefaultGroupName=Gold Bar
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..\..\build\installer
-OutputBaseFilename=GoldBar-Setup-v1.5.0
+OutputBaseFilename=GoldBar-Setup-v1.5.1
 SetupIconFile=..\GoldBar.Windows\AppIcon.ico
 Compression=lzma2/max
 SolidCompression=yes
