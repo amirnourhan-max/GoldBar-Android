@@ -16,7 +16,7 @@ grep -q 'com.amirnourhan.goldbar/.QuickCalcWidget' build/query-receivers.txt
 # Check AppWidgetService before and after launching the app.
 adb shell dumpsys appwidget > build/appwidget-before.txt
 adb shell am force-stop com.amirnourhan.goldbar
-adb shell am start -W -n com.amirnourhan.goldbar/.MainActivityV109
+adb shell am start -W -n com.amirnourhan.goldbar/.MainActivityV110
 sleep 5
 adb shell dumpsys appwidget > build/appwidget-after.txt
 
@@ -47,6 +47,14 @@ for i in 1 2 3 4; do
   sleep 1
 done
 test "$clear_found" = "1"
+
+# Scroll through the lower-assay area and ensure the two removed metrics are not rendered.
+adb shell input swipe 520 1750 520 500 450
+sleep 1
+adb shell uiautomator dump /sdcard/lower.xml >/dev/null
+adb pull /sdcard/lower.xml build/lower.xml >/dev/null
+! grep -q '۰.۴٪ کل وزن (g)' build/lower.xml
+! grep -q 'بار نهایی دیگر (g)' build/lower.xml
 
 # Scroll until the in-app quick calculator is visible.
 found=0
