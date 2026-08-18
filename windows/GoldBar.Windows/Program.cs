@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Drawing.Imaging;
+using System.Reflection;
 
 namespace GoldBar.Windows;
 
@@ -20,6 +21,7 @@ internal static class Program
         try
         {
             main = new DesktopMainForm();
+            ApplyTestPage(main);
         }
         catch (Exception ex)
         {
@@ -34,8 +36,6 @@ internal static class Program
 
         ConfigureUiScreenshot(main);
 
-        // The splash is intentionally short: it covers real initialization time,
-        // but never makes a fast PC wait for seconds.
         while (watch.ElapsedMilliseconds < 380)
         {
             Application.DoEvents();
@@ -44,6 +44,18 @@ internal static class Program
 
         splash.Close();
         Application.Run(main);
+    }
+
+    private static void ApplyTestPage(DesktopMainForm main)
+    {
+        var page = Environment.GetEnvironmentVariable("GOLDBAR_UI_PAGE");
+        if (string.IsNullOrWhiteSpace(page) || page.Equals("dashboard", StringComparison.OrdinalIgnoreCase)) return;
+        try
+        {
+            var method = typeof(DesktopMainForm).GetMethod("ShowPage", BindingFlags.Instance | BindingFlags.NonPublic);
+            method?.Invoke(main, new object[] { page });
+        }
+        catch { }
     }
 
     private static void ConfigureUiScreenshot(DesktopMainForm main)
