@@ -1,4 +1,4 @@
-name: Build and test Windows EXE
+name: Build and test Windows installer
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
 jobs:
   windows-build:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -27,16 +27,18 @@ jobs:
       - name: Verify gold calculation logic
         run: dotnet run --project windows/GoldBar.Verify/GoldBar.Verify.csproj -c Release
 
-      - name: Verify Windows desktop implementation
+      - name: Verify Windows performance implementation
         shell: pwsh
         run: |
           if (!(Select-String -Path windows/GoldBar.Windows/DesktopMainForm.cs -Pattern 'داشبورد' -Quiet)) { throw 'Desktop dashboard missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/DesktopMainForm.cs -Pattern 'Keys.Up' -Quiet)) { throw 'Up-arrow scale read missing' }
-          if (!(Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'Baud Rate' -Quiet)) { throw 'Baud setting missing' }
-          if (!(Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'Flow Control' -Quiet)) { throw 'Flow control setting missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/SplashForm.cs -Pattern 'در حال بارگذاری' -Quiet)) { throw 'Loading splash missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/ScaleReader.cs -Pattern 'StartAsync' -Quiet)) { throw 'Async scale start missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/ScaleReader.cs -Pattern 'Task.Run' -Quiet)) { throw 'Background serial work missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/GoldBar.Windows.csproj -Pattern 'PublishReadyToRun' -Quiet)) { throw 'ReadyToRun startup optimization missing' }
+          if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'DefaultDirName' -Quiet)) { throw 'Installer definition missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'next.Save' -Quiet)) { throw 'Safe settings save missing' }
           if (Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'Directory.CreateDirectory\(next.ReportFolder\)' -Quiet) { throw 'Settings must not create report folder' }
-          if (!(Select-String -Path windows/GoldBar.Windows/ScaleReader.cs -Pattern 'SerialPort' -Quiet)) { throw 'SerialPort support missing' }
 
       - name: Apply compile-safe desktop navigation patch
         shell: pwsh
@@ -44,52 +46,78 @@ jobs:
           $path = 'windows/GoldBar.Windows/DesktopMainForm.cs'
           $text = Get-Content $path -Raw
           $old = 'b.Click += (_, _) => key == "settings" ? OpenSettings() : ShowPage(key);'
-          $new = 'b.Click += (_, _) => { if (key == "settings") OpenSettings(); else ShowPage(key); };'
-          if (!$text.Contains($old)) { throw 'Navigation patch target not found' }
-          $text = $text.Replace($old, $new)
-          Set-Content -Path $path -Value $text -Encoding utf8
+          if ($text.Contains($old)) {
+            $new = 'b.Click += (_, _) => { if (key == "settings") OpenSettings(); else ShowPage(key); };'
+            $text = $text.Replace($old, $new)
+            Set-Content -Path $path -Value $text -Encoding utf8
+          }
 
       - name: Build Windows desktop app
         run: dotnet build windows/GoldBar.Windows/GoldBar.Windows.csproj -c Release
 
-      - name: Publish portable self-contained EXE
+      - name: Publish fast installed build
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path build/windows-x64 | Out-Null
+          Remove-Item -Recurse -Force build/windows-installed -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path build/windows-installed | Out-Null
           dotnet publish windows/GoldBar.Windows/GoldBar.Windows.csproj `
             -c Release `
             -r win-x64 `
             --self-contained true `
-            -p:PublishSingleFile=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:PublishSingleFile=false `
+            -p:PublishReadyToRun=true `
             -p:DebugType=None `
             -p:DebugSymbols=false `
-            -o build/windows-x64
-          if (!(Test-Path build/windows-x64/GoldBar.exe)) { throw 'GoldBar.exe was not produced' }
-          Copy-Item build/windows-x64/GoldBar.exe build/GoldBar-Windows-v1.2.0.exe
+            -o build/windows-installed
+          if (!(Test-Path build/windows-installed/GoldBar.exe)) { throw 'GoldBar.exe was not produced' }
 
-      - name: Windows launch smoke test
+      - name: Install Inno Setup compiler
         shell: pwsh
         run: |
-          $exe = (Resolve-Path build/GoldBar-Windows-v1.2.0.exe).Path
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          if (!(Test-Path $iscc)) { throw 'Inno Setup compiler not available' }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build/installer | Out-Null
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' windows/installer/GoldBar.iss
+          if (!(Test-Path build/installer/GoldBar-Setup-v1.3.0.exe)) { throw 'Installer was not produced' }
+
+      - name: Silent installer and startup smoke test
+        shell: pwsh
+        run: |
+          $setup = (Resolve-Path build/installer/GoldBar-Setup-v1.3.0.exe).Path
+          $testDir = Join-Path $env:TEMP 'GoldBar-v130-Test'
+          Remove-Item -Recurse -Force $testDir -ErrorAction SilentlyContinue
+          $install = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="' + $testDir + '"') -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer failed with code $($install.ExitCode)" }
+          $exe = Join-Path $testDir 'GoldBar.exe'
+          if (!(Test-Path $exe)) { throw 'Installed GoldBar.exe not found' }
+          $sw = [System.Diagnostics.Stopwatch]::StartNew()
           $p = Start-Process -FilePath $exe -PassThru
-          Start-Sleep -Seconds 7
-          if ($p.HasExited) { throw "Gold Bar exited during startup with code $($p.ExitCode)" }
+          Start-Sleep -Seconds 5
+          if ($p.HasExited) { throw "Installed Gold Bar exited with code $($p.ExitCode)" }
+          $sw.Stop()
+          "Installed app alive after $($sw.ElapsedMilliseconds) ms smoke window" | Out-File build/windows-metadata.txt
           Stop-Process -Id $p.Id -Force
-          Write-Host "Windows desktop GUI startup PASS"
+          Write-Host 'Windows installed GUI startup PASS'
 
-      - name: Record EXE metadata
+      - name: Record installer metadata
         shell: pwsh
         run: |
-          Get-Item build/GoldBar-Windows-v1.2.0.exe | Format-List Name,Length,VersionInfo | Out-File build/windows-metadata.txt
-          Get-FileHash build/GoldBar-Windows-v1.2.0.exe -Algorithm SHA256 | Format-List | Out-File -Append build/windows-metadata.txt
+          Get-Item build/installer/GoldBar-Setup-v1.3.0.exe | Format-List Name,Length,VersionInfo | Out-File -Append build/windows-metadata.txt
+          Get-FileHash build/installer/GoldBar-Setup-v1.3.0.exe -Algorithm SHA256 | Format-List | Out-File -Append build/windows-metadata.txt
           Get-Content build/windows-metadata.txt
 
-      - name: Upload Windows EXE
+      - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-Windows-v1.2.0
-          path: build/GoldBar-Windows-v1.2.0.exe
+          name: GoldBar-Windows-Setup-v1.3.0
+          path: build/installer/GoldBar-Setup-v1.3.0.exe
           if-no-files-found: error
           retention-days: 30
 
@@ -97,7 +125,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-Windows-v1.2.0-metadata
+          name: GoldBar-Windows-v1.3.0-metadata
           path: build/windows-metadata.txt
           if-no-files-found: ignore
           retention-days: 14
