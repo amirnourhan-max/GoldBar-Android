@@ -51,6 +51,18 @@ jobs:
           if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'GoldBar-Setup-v1.5.0' -Quiet)) { throw 'Installer v1.5.0 definition missing' }
           if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'SetupIconFile' -Quiet)) { throw 'Installer icon missing' }
 
+      - name: Apply compile-safe event patch
+        shell: pwsh
+        run: |
+          $path = 'windows/GoldBar.Windows/ModernMainForm.cs'
+          $text = Get-Content $path -Raw
+          $old = 'b.Click += (_, _) => key == "settings" ? OpenSettingsDrawer() : ShowPage(key);'
+          $new = 'b.Click += (_, _) => { if (key == "settings") OpenSettingsDrawer(); else ShowPage(key); };'
+          if ($text.Contains($old)) {
+            $text = $text.Replace($old, $new)
+            Set-Content -Path $path -Value $text -Encoding utf8
+          }
+
       - name: Build Windows desktop app
         run: dotnet build windows/GoldBar.Windows/GoldBar.Windows.csproj -c Release
 
