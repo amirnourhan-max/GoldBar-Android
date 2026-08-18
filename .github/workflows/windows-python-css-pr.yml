@@ -32,9 +32,39 @@ jobs:
           $t=$t.Replace('from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot','from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot, Qt')
           $t=$t.Replace('from PySide6.QtGui import QDesktopServices, QIcon','from PySide6.QtGui import QDesktopServices, QIcon, QColor')
           $t=$t.Replace('splash.showMessage("در حال بارگذاری…", 0x0084 | 0x0004, 0xFFF1C1)  # AlignCenter | AlignBottom','splash.showMessage("در حال بارگذاری…", Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom, QColor("#fff1c1"))')
+          $t=$t.Replace('self.setMinimumSize(1180, 760)','self.setMinimumSize(960, 660)')
           Set-Content $p $t -Encoding utf8
           $j='windows/GoldBar.Python/web/app.js'; $js=Get-Content $j -Raw; $js=$js.Replace('JSON.parse(raw)',"JSON.parse(String(raw).replaceAll('NaN','null'))"); Set-Content $j $js -Encoding utf8
-          Add-Content windows/GoldBar.Python/web/style.css "`n.app-shell{direction:ltr!important}.sidebar,.main-area{direction:rtl!important}" -Encoding utf8
+          @'
+          .app-shell{direction:ltr!important;min-width:0!important}
+          .sidebar,.main-area{direction:rtl!important}
+          .register-grid{direction:ltr!important}
+          .register-grid .field-block,.register-grid .scale-read-btn,.register-grid .scale-hint{direction:rtl!important}
+          .register-actions{direction:ltr!important}
+          .register-actions>button{direction:rtl!important}
+          .settings-drawer{right:14px!important;left:auto!important;transform:translateX(calc(100% + 25px))!important}
+          .settings-drawer.open{transform:translateX(0)!important}
+          @media(max-width:1100px){
+            .app-shell{grid-template-columns:190px minmax(0,1fr)!important}
+            .sidebar{padding:10px 8px 9px!important;gap:7px!important}
+            .brand-card{height:152px!important}
+            .gold-bar{width:104px!important;height:82px!important}
+            .brand-title{font-size:20px!important}
+            .link-button{font-size:11px!important;padding-top:3px!important}
+            .nav-list{gap:2px!important}
+            .nav-item{height:39px!important;padding:0 9px!important;gap:8px!important;font-size:12px!important}
+            .nav-icon{font-size:16px!important;width:19px!important}
+            .scale-mini{padding:9px!important}
+            .scale-mini-value{padding:5px 0!important}
+            .scale-mini-value span{font-size:25px!important}
+            .content-scroll{padding-left:12px!important;padding-right:12px!important}
+            .topbar{padding-left:16px!important;padding-right:16px!important}
+            .metrics-grid{gap:8px!important}
+            .metric-card{padding-left:10px!important;padding-right:10px!important}
+            .metric-orb{width:38px!important;height:38px!important;font-size:19px!important;left:10px!important}
+            .register-grid{grid-template-columns:minmax(180px,1fr) 150px minmax(230px,1.25fr)!important;gap:8px!important;padding-left:14px!important;padding-right:14px!important}
+          }
+          '@ | Add-Content windows/GoldBar.Python/web/style.css -Encoding utf8
       - name: Core selftest
         shell: pwsh
         run: |
