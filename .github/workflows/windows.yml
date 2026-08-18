@@ -27,7 +27,7 @@ jobs:
       - name: Verify gold calculation logic
         run: dotnet run --project windows/GoldBar.Verify/GoldBar.Verify.csproj -c Release
 
-      - name: Verify Windows performance implementation
+      - name: Verify Windows performance and layout implementation
         shell: pwsh
         run: |
           if (!(Select-String -Path windows/GoldBar.Windows/DesktopMainForm.cs -Pattern 'داشبورد' -Quiet)) { throw 'Desktop dashboard missing' }
@@ -35,6 +35,9 @@ jobs:
           if (!(Select-String -Path windows/GoldBar.Windows/SplashForm.cs -Pattern 'در حال بارگذاری' -Quiet)) { throw 'Loading splash missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/ScaleReader.cs -Pattern 'StartAsync' -Quiet)) { throw 'Async scale start missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/ScaleReader.cs -Pattern 'Task.Run' -Quiet)) { throw 'Background serial work missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/DesktopLayoutFixer.cs -Pattern 'FixWorkspace' -Quiet)) { throw 'Desktop layout fixer missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/DesktopLayoutFixer.cs -Pattern 'cell.Dock = DockStyle.Fill' -Quiet)) { throw 'Dashboard cell stretch fix missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/Program.cs -Pattern 'DesktopLayoutFixer.Attach' -Quiet)) { throw 'Layout fixer not attached' }
           if (!(Select-String -Path windows/GoldBar.Windows/GoldBar.Windows.csproj -Pattern 'PublishReadyToRun' -Quiet)) { throw 'ReadyToRun startup optimization missing' }
           if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'DefaultDirName' -Quiet)) { throw 'Installer definition missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'next.Save' -Quiet)) { throw 'Safe settings save missing' }
@@ -75,9 +78,7 @@ jobs:
         shell: pwsh
         run: |
           $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
-          if (!(Test-Path $iscc)) {
-            choco install innosetup --no-progress -y
-          }
+          if (!(Test-Path $iscc)) { choco install innosetup --no-progress -y }
           if (!(Test-Path $iscc)) { throw 'Inno Setup compiler not available' }
 
       - name: Build installer
@@ -85,13 +86,13 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path build/installer | Out-Null
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' windows/installer/GoldBar.iss
-          if (!(Test-Path build/installer/GoldBar-Setup-v1.3.0.exe)) { throw 'Installer was not produced' }
+          if (!(Test-Path build/installer/GoldBar-Setup-v1.3.1.exe)) { throw 'Installer was not produced' }
 
       - name: Silent installer and startup smoke test
         shell: pwsh
         run: |
-          $setup = (Resolve-Path build/installer/GoldBar-Setup-v1.3.0.exe).Path
-          $testDir = Join-Path $env:TEMP 'GoldBar-v130-Test'
+          $setup = (Resolve-Path build/installer/GoldBar-Setup-v1.3.1.exe).Path
+          $testDir = Join-Path $env:TEMP 'GoldBar-v131-Test'
           Remove-Item -Recurse -Force $testDir -ErrorAction SilentlyContinue
           $install = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="' + $testDir + '"') -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "Installer failed with code $($install.ExitCode)" }
@@ -109,15 +110,15 @@ jobs:
       - name: Record installer metadata
         shell: pwsh
         run: |
-          Get-Item build/installer/GoldBar-Setup-v1.3.0.exe | Format-List Name,Length,VersionInfo | Out-File -Append build/windows-metadata.txt
-          Get-FileHash build/installer/GoldBar-Setup-v1.3.0.exe -Algorithm SHA256 | Format-List | Out-File -Append build/windows-metadata.txt
+          Get-Item build/installer/GoldBar-Setup-v1.3.1.exe | Format-List Name,Length,VersionInfo | Out-File -Append build/windows-metadata.txt
+          Get-FileHash build/installer/GoldBar-Setup-v1.3.1.exe -Algorithm SHA256 | Format-List | Out-File -Append build/windows-metadata.txt
           Get-Content build/windows-metadata.txt
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-Windows-Setup-v1.3.0
-          path: build/installer/GoldBar-Setup-v1.3.0.exe
+          name: GoldBar-Windows-Setup-v1.3.1
+          path: build/installer/GoldBar-Setup-v1.3.1.exe
           if-no-files-found: error
           retention-days: 30
 
@@ -125,7 +126,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-Windows-v1.3.0-metadata
+          name: GoldBar-Windows-v1.3.1-metadata
           path: build/windows-metadata.txt
           if-no-files-found: ignore
           retention-days: 14
