@@ -4,21 +4,30 @@ set -euxo pipefail
 mkdir -p build
 adb logcat -c
 adb install -r app/build/outputs/apk/debug/app-debug.apk
+sleep 3
 
-# Confirm Android itself registered the home-screen AppWidget provider.
-adb shell dumpsys appwidget > build/appwidget.txt
-grep -q 'com.amirnourhan.goldbar' build/appwidget.txt
-grep -q 'QuickCalcWidget' build/appwidget.txt
+# Diagnose widget discovery at PackageManager level first.
+adb shell dumpsys package com.amirnourhan.goldbar > build/package-widget.txt
+adb shell cmd package query-receivers --brief --components --user 0 \
+  -a android.appwidget.action.APPWIDGET_UPDATE > build/query-receivers.txt
+cat build/query-receivers.txt
+grep -q 'com.amirnourhan.goldbar/.QuickCalcWidget' build/query-receivers.txt
 
+# Check AppWidgetService before and after launching the app.
+adb shell dumpsys appwidget > build/appwidget-before.txt
 adb shell am force-stop com.amirnourhan.goldbar
 adb shell am start -W -n com.amirnourhan.goldbar/.MainActivityV108
-sleep 4
+sleep 5
+adb shell dumpsys appwidget > build/appwidget-after.txt
 
-# Capture diagnostics before making assertions so a startup failure is debuggable.
+# Capture diagnostics before making AppWidgetService assertion.
 adb logcat -d > build/logcat-initial.txt
 adb shell dumpsys package com.amirnourhan.goldbar > build/package.txt
 adb shell pidof com.amirnourhan.goldbar | tr -d '\r' > build/pid-start.txt
 test -s build/pid-start.txt
+
+grep -q 'com.amirnourhan.goldbar' build/appwidget-after.txt
+grep -q 'QuickCalcWidget' build/appwidget-after.txt
 
 adb shell uiautomator dump /sdcard/start.xml
 adb pull /sdcard/start.xml build/start.xml
