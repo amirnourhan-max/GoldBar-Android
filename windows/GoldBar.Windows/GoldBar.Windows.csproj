@@ -11,9 +11,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>AppIcon.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.5.0</Version>
-    <FileVersion>1.5.0.0</FileVersion>
-    <AssemblyVersion>1.5.0.0</AssemblyVersion>
+    <Version>1.5.1</Version>
+    <FileVersion>1.5.1.0</FileVersion>
+    <AssemblyVersion>1.5.1.0</AssemblyVersion>
     <PublishReadyToRun>true</PublishReadyToRun>
     <TieredCompilation>true</TieredCompilation>
   </PropertyGroup>
@@ -27,6 +27,7 @@
     <Compile Include="ModernLayoutPolish.cs" />
     <Compile Include="SettingsDrawerPolish.cs" />
     <Compile Include="SettingsDrawerLayoutFix.cs" />
+    <Compile Include="MockupFixedLayout.cs" />
     <Compile Include="ModernSplashForm.cs" />
   </ItemGroup>
   <ItemGroup>
