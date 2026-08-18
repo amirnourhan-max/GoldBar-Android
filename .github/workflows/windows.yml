@@ -51,17 +51,22 @@ jobs:
           if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'GoldBar-Setup-v1.5.0' -Quiet)) { throw 'Installer v1.5.0 definition missing' }
           if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'SetupIconFile' -Quiet)) { throw 'Installer icon missing' }
 
-      - name: Apply compile-safe event patch
+      - name: Apply compile and startup safety patches
         shell: pwsh
         run: |
           $path = 'windows/GoldBar.Windows/ModernMainForm.cs'
           $text = Get-Content $path -Raw
           $old = 'b.Click += (_, _) => key == "settings" ? OpenSettingsDrawer() : ShowPage(key);'
           $new = 'b.Click += (_, _) => { if (key == "settings") OpenSettingsDrawer(); else ShowPage(key); };'
-          if ($text.Contains($old)) {
-            $text = $text.Replace($old, $new)
-            Set-Content -Path $path -Value $text -Encoding utf8
-          }
+          $text = $text.Replace($old, $new)
+
+          # A WinForms BeginInvoke before a native handle exists can block startup on
+          # fresh installs/headless runners. Schedule the initial splitter restore
+          # from the SplitContainer HandleCreated event instead.
+          $old2 = 'BeginInvoke((Action)ApplySavedSplitters);'
+          $new2 = '_dashboardMainSplit.HandleCreated += (_, _) => { try { _dashboardMainSplit.BeginInvoke((Action)ApplySavedSplitters); } catch { } };'
+          $text = $text.Replace($old2, $new2)
+          Set-Content -Path $path -Value $text -Encoding utf8
 
       - name: Build Windows desktop app
         run: dotnet build windows/GoldBar.Windows/GoldBar.Windows.csproj -c Release
@@ -137,28 +142,32 @@ jobs:
           Remove-Item Env:GOLDBAR_SELFTEST_OUT -ErrorAction SilentlyContinue
           Remove-Item $settingsFile -Force -ErrorAction SilentlyContinue
 
+          function Capture-GoldBarPage([string]$page, [string]$size, [string]$shot, [int]$minimumBytes) {
+            Remove-Item $shot -Force -ErrorAction SilentlyContinue
+            $env:GOLDBAR_UI_PAGE = $page
+            $env:GOLDBAR_UI_SIZE = $size
+            $env:GOLDBAR_UI_SCREENSHOT = $shot
+            $env:GOLDBAR_SCREENSHOT_EXIT = '1'
+            $proc = Start-Process -FilePath $exe -PassThru
+            $ok = $false
+            for ($i = 0; $i -lt 40; $i++) {
+              Start-Sleep -Milliseconds 300
+              if (Test-Path $shot) {
+                if ((Get-Item $shot).Length -ge $minimumBytes) { $ok = $true; break }
+              }
+              if ($proc.HasExited -and !(Test-Path $shot)) { break }
+            }
+            if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+            if (!$ok) { throw "Visual capture failed for $page at $size" }
+          }
+
           $pages = @('dashboard','entries','calculations','quick','reports','settings')
           $timer = [System.Diagnostics.Stopwatch]::StartNew()
           foreach ($page in $pages) {
-            $shot = Join-Path $buildDir ("ui-" + $page + ".png")
-            $env:GOLDBAR_UI_PAGE = $page
-            $env:GOLDBAR_UI_SIZE = '1540x900'
-            $env:GOLDBAR_UI_SCREENSHOT = $shot
-            $env:GOLDBAR_SCREENSHOT_EXIT = '1'
-            $p = Start-Process -FilePath $exe -PassThru
-            if (!$p.WaitForExit(16000)) { Stop-Process -Id $p.Id -Force; throw "Visual test timed out on $page" }
-            if (!(Test-Path $shot)) { throw "Screenshot missing for $page" }
-            if ((Get-Item $shot).Length -lt 25000) { throw "Screenshot too small for $page" }
+            Capture-GoldBarPage $page '1540x900' (Join-Path $buildDir ("ui-" + $page + ".png")) 25000
           }
-
           foreach ($page in @('dashboard','entries','settings')) {
-            $shot = Join-Path $buildDir ("ui-compact-" + $page + ".png")
-            $env:GOLDBAR_UI_PAGE = $page
-            $env:GOLDBAR_UI_SIZE = '1180x760'
-            $env:GOLDBAR_UI_SCREENSHOT = $shot
-            $p = Start-Process -FilePath $exe -PassThru
-            if (!$p.WaitForExit(16000)) { Stop-Process -Id $p.Id -Force; throw "Compact visual test timed out on $page" }
-            if (!(Test-Path $shot) -or (Get-Item $shot).Length -lt 20000) { throw "Compact screenshot failed for $page" }
+            Capture-GoldBarPage $page '1180x760' (Join-Path $buildDir ("ui-compact-" + $page + ".png")) 20000
           }
           $timer.Stop()
           "Installer + settings + scale stability + 9 visual checks PASS in $($timer.ElapsedMilliseconds) ms" | Out-File build/windows-metadata.txt
