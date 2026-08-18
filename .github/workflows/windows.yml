@@ -27,33 +27,20 @@ jobs:
       - name: Verify gold calculation logic
         run: dotnet run --project windows/GoldBar.Verify/GoldBar.Verify.csproj -c Release
 
-      - name: Verify Windows performance and layout implementation
+      - name: Verify Windows implementation
         shell: pwsh
         run: |
-          if (!(Select-String -Path windows/GoldBar.Windows/DesktopMainForm.cs -Pattern 'داشبورد' -Quiet)) { throw 'Desktop dashboard missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/DesktopMainForm.cs -Pattern 'BuildDashboardPage' -Quiet)) { throw 'Desktop dashboard missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/DesktopMainForm.cs -Pattern 'Keys.Up' -Quiet)) { throw 'Up-arrow scale read missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/DesktopMainForm.cs -Pattern 'RoundButton' -Quiet)) { throw 'Desktop rounded controls missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/SplashForm.cs -Pattern 'در حال بارگذاری' -Quiet)) { throw 'Loading splash missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/ScaleReader.cs -Pattern 'StartAsync' -Quiet)) { throw 'Async scale start missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/ScaleReader.cs -Pattern 'Task.Run' -Quiet)) { throw 'Background serial work missing' }
-          if (!(Select-String -Path windows/GoldBar.Windows/DesktopLayoutFixer.cs -Pattern 'FixWorkspace' -Quiet)) { throw 'Desktop layout fixer missing' }
-          if (!(Select-String -Path windows/GoldBar.Windows/DesktopLayoutFixer.cs -Pattern 'cell.Dock = DockStyle.Fill' -Quiet)) { throw 'Dashboard cell stretch fix missing' }
-          if (!(Select-String -Path windows/GoldBar.Windows/Program.cs -Pattern 'DesktopLayoutFixer.Attach' -Quiet)) { throw 'Layout fixer not attached' }
+          if (!(Select-String -Path windows/GoldBar.Windows/Program.cs -Pattern 'GOLDBAR_UI_SCREENSHOT' -Quiet)) { throw 'UI screenshot verification hook missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/GoldBar.Windows.csproj -Pattern 'PublishReadyToRun' -Quiet)) { throw 'ReadyToRun startup optimization missing' }
-          if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'DefaultDirName' -Quiet)) { throw 'Installer definition missing' }
+          if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'GoldBar-Setup-v1.4.0' -Quiet)) { throw 'Installer 1.4.0 definition missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'next.Save' -Quiet)) { throw 'Safe settings save missing' }
           if (Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'Directory.CreateDirectory\(next.ReportFolder\)' -Quiet) { throw 'Settings must not create report folder' }
-
-      - name: Apply compile-safe desktop navigation patch
-        shell: pwsh
-        run: |
-          $path = 'windows/GoldBar.Windows/DesktopMainForm.cs'
-          $text = Get-Content $path -Raw
-          $old = 'b.Click += (_, _) => key == "settings" ? OpenSettings() : ShowPage(key);'
-          if ($text.Contains($old)) {
-            $new = 'b.Click += (_, _) => { if (key == "settings") OpenSettings(); else ShowPage(key); };'
-            $text = $text.Replace($old, $new)
-            Set-Content -Path $path -Value $text -Encoding utf8
-          }
 
       - name: Build Windows desktop app
         run: dotnet build windows/GoldBar.Windows/GoldBar.Windows.csproj -c Release
@@ -86,47 +73,57 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path build/installer | Out-Null
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' windows/installer/GoldBar.iss
-          if (!(Test-Path build/installer/GoldBar-Setup-v1.3.1.exe)) { throw 'Installer was not produced' }
+          if (!(Test-Path build/installer/GoldBar-Setup-v1.4.0.exe)) { throw 'Installer was not produced' }
 
-      - name: Silent installer and startup smoke test
+      - name: Silent install and visual smoke test
         shell: pwsh
         run: |
-          $setup = (Resolve-Path build/installer/GoldBar-Setup-v1.3.1.exe).Path
-          $testDir = Join-Path $env:TEMP 'GoldBar-v131-Test'
+          $setup = (Resolve-Path build/installer/GoldBar-Setup-v1.4.0.exe).Path
+          $testDir = Join-Path $env:TEMP 'GoldBar-v140-Test'
           Remove-Item -Recurse -Force $testDir -ErrorAction SilentlyContinue
           $install = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="' + $testDir + '"') -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "Installer failed with code $($install.ExitCode)" }
           $exe = Join-Path $testDir 'GoldBar.exe'
           if (!(Test-Path $exe)) { throw 'Installed GoldBar.exe not found' }
+
+          $shot = Join-Path (Resolve-Path build).Path 'ui-dashboard.png'
+          $env:GOLDBAR_UI_SCREENSHOT = $shot
+          $env:GOLDBAR_SCREENSHOT_EXIT = '1'
           $sw = [System.Diagnostics.Stopwatch]::StartNew()
           $p = Start-Process -FilePath $exe -PassThru
-          Start-Sleep -Seconds 5
-          if ($p.HasExited) { throw "Installed Gold Bar exited with code $($p.ExitCode)" }
+          if (!$p.WaitForExit(15000)) {
+            Stop-Process -Id $p.Id -Force
+            throw 'Installed app did not finish visual smoke test in time'
+          }
           $sw.Stop()
-          "Installed app alive after $($sw.ElapsedMilliseconds) ms smoke window" | Out-File build/windows-metadata.txt
-          Stop-Process -Id $p.Id -Force
-          Write-Host 'Windows installed GUI startup PASS'
+          if (!(Test-Path $shot)) { throw 'Dashboard screenshot was not produced' }
+          if ((Get-Item $shot).Length -lt 30000) { throw 'Dashboard screenshot is unexpectedly small' }
+          "Visual startup and screenshot PASS in $($sw.ElapsedMilliseconds) ms" | Out-File build/windows-metadata.txt
+          Remove-Item Env:GOLDBAR_UI_SCREENSHOT -ErrorAction SilentlyContinue
+          Remove-Item Env:GOLDBAR_SCREENSHOT_EXIT -ErrorAction SilentlyContinue
 
       - name: Record installer metadata
         shell: pwsh
         run: |
-          Get-Item build/installer/GoldBar-Setup-v1.3.1.exe | Format-List Name,Length,VersionInfo | Out-File -Append build/windows-metadata.txt
-          Get-FileHash build/installer/GoldBar-Setup-v1.3.1.exe -Algorithm SHA256 | Format-List | Out-File -Append build/windows-metadata.txt
+          Get-Item build/installer/GoldBar-Setup-v1.4.0.exe | Format-List Name,Length,VersionInfo | Out-File -Append build/windows-metadata.txt
+          Get-FileHash build/installer/GoldBar-Setup-v1.4.0.exe -Algorithm SHA256 | Format-List | Out-File -Append build/windows-metadata.txt
           Get-Content build/windows-metadata.txt
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-Windows-Setup-v1.3.1
-          path: build/installer/GoldBar-Setup-v1.3.1.exe
+          name: GoldBar-Windows-Setup-v1.4.0
+          path: build/installer/GoldBar-Setup-v1.4.0.exe
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload Windows test metadata
+      - name: Upload visual diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-Windows-v1.3.1-metadata
-          path: build/windows-metadata.txt
+          name: GoldBar-Windows-v1.4.0-visual-test
+          path: |
+            build/ui-dashboard.png
+            build/windows-metadata.txt
           if-no-files-found: ignore
           retention-days: 14
