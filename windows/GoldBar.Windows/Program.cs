@@ -32,8 +32,14 @@ internal static class Program
         {
             main = new ModernMainForm();
             ApplyTestSize(main);
+
+            // Visual test navigation must happen after the native Form handle and
+            // child z-order have been created. This also accurately mirrors a real
+            // user clicking Settings after the app appears.
             var page = Environment.GetEnvironmentVariable("GOLDBAR_UI_PAGE");
-            if (!string.IsNullOrWhiteSpace(page)) main.ShowPageForTest(page);
+            if (!string.IsNullOrWhiteSpace(page))
+                main.Shown += (_, _) => main.ShowPageForTest(page);
+
             if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GOLDBAR_UI_SIZE")))
                 main.WindowState = FormWindowState.Maximized;
         }
@@ -116,7 +122,7 @@ internal static class Program
 
         main.Shown += (_, _) =>
         {
-            var timer = new System.Windows.Forms.Timer { Interval = 1000 };
+            var timer = new System.Windows.Forms.Timer { Interval = 1200 };
             timer.Tick += (_, _) =>
             {
                 timer.Stop();
