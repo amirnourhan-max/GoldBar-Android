@@ -38,33 +38,6 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Patch startup WindowInsets crash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('app/src/main/java/com/amirnourhan/goldbar/MainActivity.java')
-          lines = p.read_text(encoding='utf-8').splitlines(True)
-          out = []
-          skipping = False
-          removed = False
-          for line in lines:
-              if line.strip() == 'import android.view.WindowInsetsController;':
-                  continue
-              if not removed and line.strip() == 'if (android.os.Build.VERSION.SDK_INT >= 30) {':
-                  skipping = True
-                  removed = True
-                  continue
-              if skipping:
-                  if line.strip() == '}':
-                      skipping = False
-                  continue
-              out.append(line)
-          if not removed or skipping:
-              raise SystemExit('WindowInsets startup block was not removed cleanly')
-          p.write_text(''.join(out), encoding='utf-8')
-          print('Startup crash patch applied')
-          PY
-
       - name: Verify Excel business logic
         run: |
           rm -rf build/logic-test
@@ -74,6 +47,13 @@ jobs:
             app/src/main/java/com/amirnourhan/goldbar/GoldCalculator.java \
             verify/Verify.java
           java -cp build/logic-test Verify
+
+      - name: Verify row UI was removed
+        run: |
+          ! grep -q "buildGuideCard" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
+          ! grep -q "inputGuide" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
+          grep -q "SOFT_INPUT_ADJUST_RESIZE" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
+          grep -q 'windowSoftInputMode="adjustResize"' app/src/main/AndroidManifest.xml
 
       - name: Build debug APK with official Android toolchain
         run: gradle --no-daemon --stacktrace :app:assembleDebug
@@ -89,7 +69,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Android emulator startup smoke test
+      - name: Android emulator startup and keyboard smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -103,13 +83,41 @@ jobs:
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb shell am force-stop com.amirnourhan.goldbar
             adb shell am start -W -n com.amirnourhan.goldbar/.MainActivity
-            sleep 5
+            sleep 4
+            adb shell uiautomator dump /sdcard/start.xml
+            adb pull /sdcard/start.xml build/start.xml
+            grep -q "GOLD BAR" build/start.xml
+            ! grep -q "شماره راهنما" build/start.xml
+            ! grep -q "ردیف / شماره راهنما" build/start.xml
+
+            adb shell input swipe 520 1750 520 350 500
+            adb shell input swipe 520 1750 520 350 500
+            adb shell input swipe 520 1750 520 350 500
+            sleep 2
+            adb shell uiautomator dump /sdcard/tools.xml
+            adb pull /sdcard/tools.xml build/tools.xml
+            python3 - <<'PY'
+            import re, xml.etree.ElementTree as ET
+            root = ET.parse('build/tools.xml').getroot()
+            node = next((n for n in root.iter('node') if n.attrib.get('content-desc') == 'quick-split-base'), None)
+            if node is None:
+                raise SystemExit('quick-split-base field not visible after scrolling')
+            nums = list(map(int, re.findall(r'\d+', node.attrib['bounds'])))
+            x = (nums[0] + nums[2]) // 2
+            y = (nums[1] + nums[3]) // 2
+            open('build/tap.sh', 'w').write(f'adb shell input tap {x} {y}\n')
+            PY
+            bash build/tap.sh
+            sleep 2
+            adb shell input text 812
+            sleep 1
+            adb shell uiautomator dump /sdcard/keyboard.xml
+            adb pull /sdcard/keyboard.xml build/keyboard.xml
+            grep -q 'content-desc="quick-split-base"' build/keyboard.xml
+
             adb logcat -d > build/logcat.txt
             adb shell pidof com.amirnourhan.goldbar | tr -d '\r' > build/pid.txt
             test -s build/pid.txt
-            adb shell uiautomator dump /sdcard/window.xml
-            adb pull /sdcard/window.xml build/window.xml
-            grep -q "GOLD BAR" build/window.xml
             ! grep -E "FATAL EXCEPTION: main|Process: com\.amirnourhan\.goldbar" build/logcat.txt
             cat build/pid.txt
 
@@ -117,7 +125,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-v1.0.3-debug-apk
+          name: GoldBar-v1.0.4-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
@@ -126,10 +134,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-smoke-test-diagnostics-v103
+          name: GoldBar-smoke-test-diagnostics-v104
           path: |
             build/logcat.txt
-            build/window.xml
+            build/start.xml
+            build/tools.xml
+            build/keyboard.xml
             build/pid.txt
           if-no-files-found: ignore
           retention-days: 14
