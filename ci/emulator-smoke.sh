@@ -4,8 +4,14 @@ set -euxo pipefail
 mkdir -p build
 adb logcat -c
 adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+# Confirm Android itself registered the home-screen AppWidget provider.
+adb shell dumpsys appwidget > build/appwidget.txt
+grep -q 'com.amirnourhan.goldbar' build/appwidget.txt
+grep -q 'QuickCalcWidget' build/appwidget.txt
+
 adb shell am force-stop com.amirnourhan.goldbar
-adb shell am start -W -n com.amirnourhan.goldbar/.MainActivityV107
+adb shell am start -W -n com.amirnourhan.goldbar/.MainActivityV108
 sleep 4
 
 # Capture diagnostics before making assertions so a startup failure is debuggable.
@@ -18,6 +24,20 @@ adb shell uiautomator dump /sdcard/start.xml
 adb pull /sdcard/start.xml build/start.xml
 grep -q 'content-desc="gold-bar-title"' build/start.xml
 grep -q 'content-desc="summary-after-alloy"' build/start.xml
+
+# Confirm the compact clear-all shortcut exists inside Quick Entry.
+clear_found=0
+for i in 1 2 3 4; do
+  adb shell uiautomator dump /sdcard/clear.xml >/dev/null
+  adb pull /sdcard/clear.xml build/clear.xml >/dev/null
+  if grep -q 'content-desc="clear-all-quick-button"' build/clear.xml; then
+    clear_found=1
+    break
+  fi
+  adb shell input swipe 520 1550 520 650 350
+  sleep 1
+done
+test "$clear_found" = "1"
 
 # Scroll until the in-app quick calculator is visible.
 found=0
