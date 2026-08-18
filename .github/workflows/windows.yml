@@ -35,20 +35,22 @@ jobs:
       - name: Verify gold calculation logic
         run: dotnet run --project windows/GoldBar.Verify/GoldBar.Verify.csproj -c Release
 
-      - name: Verify Windows v1.5 implementation
+      - name: Verify Windows v1.5.1 implementation
         shell: pwsh
         run: |
           if (!(Select-String -Path windows/GoldBar.Windows/ModernMainForm.cs -Pattern 'کل بار مورد نیاز' -Quiet)) { throw 'Total alloy metric missing' }
-          if (!(Select-String -Path windows/GoldBar.Windows/ModernMainForm.cs -Pattern 'SplitContainer' -Quiet)) { throw 'Manual card resizing missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/ModernMainForm.cs -Pattern 'OpenSettingsDrawer' -Quiet)) { throw 'Integrated settings drawer missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/ModernMainForm.cs -Pattern 'Keys.Up' -Quiet)) { throw 'Up-arrow scale read missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/ModernMainForm.cs -Pattern 'StableSampleCount' -Quiet)) { throw 'Scale stability controls missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/AppSettings.cs -Pattern 'AutoRead.*false' -Quiet)) { throw 'AutoRead default must be off' }
           if (!(Select-String -Path windows/GoldBar.Windows/ScaleReader.cs -Pattern 'IsStableSeries' -Quiet)) { throw 'Scale stability filter missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/ModernSplashForm.cs -Pattern 'در حال بارگذاری' -Quiet)) { throw 'Loading splash missing' }
-          if (!(Select-String -Path windows/GoldBar.Windows/Program.cs -Pattern 'ModernMainForm' -Quiet)) { throw 'Modern shell is not active' }
+          if (!(Select-String -Path windows/GoldBar.Windows/Program.cs -Pattern 'MockupFixedLayout.Attach' -Quiet)) { throw 'Fixed mockup layout is not active' }
+          if (!(Select-String -Path windows/GoldBar.Windows/MockupFixedLayout.cs -Pattern 'IsSplitterFixed = true' -Quiet)) { throw 'Dashboard cards are still resizable' }
+          if (!(Select-String -Path windows/GoldBar.Windows/MockupFixedLayout.cs -Pattern 'Panel2Collapsed = true' -Quiet)) { throw 'Reference full-width registration row missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/SettingsDrawerLayoutFix.cs -Pattern 'SingleColumn' -Quiet)) { throw 'Reference single-column settings layout missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/GoldBar.Windows.csproj -Pattern '<ApplicationIcon>AppIcon.ico</ApplicationIcon>' -Quiet)) { throw 'Executable icon missing' }
-          if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'GoldBar-Setup-v1.5.0' -Quiet)) { throw 'Installer v1.5.0 definition missing' }
+          if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'GoldBar-Setup-v1.5.1' -Quiet)) { throw 'Installer v1.5.1 definition missing' }
           if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'SetupIconFile' -Quiet)) { throw 'Installer icon missing' }
 
       - name: Apply compile and startup safety patches
@@ -64,9 +66,6 @@ jobs:
             'BeginInvoke((Action)ApplySavedSplitters);',
             '_dashboardMainSplit.HandleCreated += (_, _) => { try { _dashboardMainSplit.BeginInvoke((Action)ApplySavedSplitters); } catch { } };')
 
-          # SplitContainer starts life at a very small design-time size. Large minimum
-          # values here can throw before the form is shown. The real saved dimensions
-          # are restored after the native handle/layout exists.
           $text = $text.Replace('Panel1MinSize = min1,', 'Panel1MinSize = 80,')
           $text = $text.Replace('Panel2MinSize = min2,', 'Panel2MinSize = 80,')
           Set-Content -Path $path -Value $text -Encoding utf8
@@ -113,13 +112,13 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path build/installer | Out-Null
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' windows/installer/GoldBar.iss
-          if (!(Test-Path build/installer/GoldBar-Setup-v1.5.0.exe)) { throw 'Installer was not produced' }
+          if (!(Test-Path build/installer/GoldBar-Setup-v1.5.1.exe)) { throw 'Installer was not produced' }
 
       - name: Silent install and complete self test
         shell: pwsh
         run: |
-          $setup = (Resolve-Path build/installer/GoldBar-Setup-v1.5.0.exe).Path
-          $testDir = Join-Path $env:TEMP 'GoldBar-v150-Test'
+          $setup = (Resolve-Path build/installer/GoldBar-Setup-v1.5.1.exe).Path
+          $testDir = Join-Path $env:TEMP 'GoldBar-v151-Test'
           Remove-Item -Recurse -Force $testDir -ErrorAction SilentlyContinue
           $install = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="' + $testDir + '"') -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "Installer failed with code $($install.ExitCode)" }
@@ -173,7 +172,7 @@ jobs:
             Capture-GoldBarPage $page '1180x760' (Join-Path $buildDir ("ui-compact-" + $page + ".png")) 20000
           }
           $timer.Stop()
-          "Installer + settings + scale stability + 9 visual checks PASS in $($timer.ElapsedMilliseconds) ms" | Out-File build/windows-metadata.txt
+          "v1.5.1 installer + calculations + settings + scale stability + 9 fixed-layout visual checks PASS in $($timer.ElapsedMilliseconds) ms" | Out-File build/windows-metadata.txt
 
           Remove-Item Env:GOLDBAR_UI_PAGE -ErrorAction SilentlyContinue
           Remove-Item Env:GOLDBAR_UI_SIZE -ErrorAction SilentlyContinue
@@ -183,15 +182,15 @@ jobs:
       - name: Record installer metadata
         shell: pwsh
         run: |
-          Get-Item build/installer/GoldBar-Setup-v1.5.0.exe | Format-List Name,Length,VersionInfo | Out-File -Append build/windows-metadata.txt
-          Get-FileHash build/installer/GoldBar-Setup-v1.5.0.exe -Algorithm SHA256 | Format-List | Out-File -Append build/windows-metadata.txt
+          Get-Item build/installer/GoldBar-Setup-v1.5.1.exe | Format-List Name,Length,VersionInfo | Out-File -Append build/windows-metadata.txt
+          Get-FileHash build/installer/GoldBar-Setup-v1.5.1.exe -Algorithm SHA256 | Format-List | Out-File -Append build/windows-metadata.txt
           Get-Content build/windows-metadata.txt
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-Windows-Setup-v1.5.0
-          path: build/installer/GoldBar-Setup-v1.5.0.exe
+          name: GoldBar-Windows-Setup-v1.5.1
+          path: build/installer/GoldBar-Setup-v1.5.1.exe
           if-no-files-found: error
           retention-days: 30
 
@@ -199,7 +198,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-Windows-v1.5.0-full-test
+          name: GoldBar-Windows-v1.5.1-full-test
           path: |
             build/ui-*.png
             build/*selftest.txt
