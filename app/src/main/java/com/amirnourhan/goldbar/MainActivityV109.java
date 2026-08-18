@@ -25,9 +25,9 @@ import java.util.Locale;
 
 /**
  * Gold Bar v1.0.9 report refinement:
- * - report contains raw inputs and final results only
- * - explicitly includes consumed alloy amount
- * - calculation method/intermediate math is omitted
+ * - compact one-page text report
+ * - raw entries + final results only
+ * - no formulas, weighted sums, differences, or calculation-method details
  */
 public class MainActivityV109 extends MainActivityV108 {
     private static final int REQUEST_SAVE_SIMPLE_REPORT = 5109;
@@ -127,64 +127,59 @@ public class MainActivityV109 extends MainActivityV108 {
                 correctionWeight, correctionTarget, correctionDrop);
 
         StringBuilder b = new StringBuilder();
-        b.append("GOLD BAR (by:Amirnourhan)\n");
-        b.append("گزارش طلا\n");
-        b.append("تاریخ و ساعت: ")
+        b.append("GOLD BAR (by:Amirnourhan) | ")
+                .append("تاریخ و ساعت: ")
                 .append(new SimpleDateFormat(
                         "yyyy/MM/dd HH:mm:ss", Locale.US).format(new Date()))
-                .append("\n\n");
+                .append("\n");
 
-        b.append("=== آبشده‌ها ===\n");
+        b.append("آبشده‌ها: ");
         if (entries.isEmpty()) {
-            b.append("آبشده‌ای ثبت نشده است.\n");
+            b.append("ثبت نشده");
         } else {
             for (int i = 0; i < entries.size(); i++) {
+                if (i > 0) b.append(" ؛ ");
                 GoldEntry e = entries.get(i);
                 b.append(i + 1)
-                        .append(") وزن: ").append(n(e.weight)).append(" g")
-                        .append(" | عیار: ").append(n(e.assay))
-                        .append("\n");
+                        .append(") ")
+                        .append(n(e.weight)).append("g")
+                        .append(" | عیار ").append(n(e.assay));
             }
         }
-        b.append("تعداد آبشده: ").append(summary.count).append("\n");
-        b.append("وزن کل آبشده: ")
-                .append(n(summary.weight)).append(" g\n");
-        b.append("عیار میانگین: ")
-                .append(n(summary.averageAssay)).append("\n");
-        b.append("وزن پس از بار: ")
-                .append(n(lower.totalAfterAlloy)).append(" g\n\n");
+        b.append("\n");
 
-        b.append("=== بالا بردن عیار ===\n");
-        b.append("عیار هدف: ").append(n(raiseTarget)).append("\n");
-        b.append("عیار شمش: ").append(n(highBarAssay)).append("\n");
-        b.append("شمش مورد نیاز: ")
-                .append(n(raise.requiredBar)).append(" g\n\n");
+        b.append("خلاصه: تعداد ").append(summary.count)
+                .append(" | وزن کل ").append(n(summary.weight)).append("g")
+                .append(" | عیار میانگین ").append(n(summary.averageAssay))
+                .append(" | وزن پس از بار ").append(n(lower.totalAfterAlloy)).append("g")
+                .append("\n");
 
-        b.append("=== پایین آوردن عیار ===\n");
-        b.append("عیار هدف: ").append(n(lowerTarget)).append("\n");
-        b.append("درصد نقره: ").append(n(silverPercent)).append("%\n");
-        b.append("مقدار بار مصرفی: ")
-                .append(n(lower.totalAlloyRequired)).append(" g\n");
-        b.append("نقره مورد نیاز: ")
-                .append(n(lower.silverRequired)).append(" g\n");
-        b.append("بار نهایی دیگر: ")
-                .append(n(lower.finalOtherAlloy)).append(" g\n");
-        b.append("وزن پس از بار: ")
-                .append(n(lower.totalAfterAlloy)).append(" g\n\n");
+        b.append("بالا بردن عیار: هدف ").append(n(raiseTarget))
+                .append(" | عیار شمش ").append(n(highBarAssay))
+                .append(" | شمش مورد نیاز ").append(n(raise.requiredBar)).append("g")
+                .append("\n");
 
-        b.append("=== محاسبه سریع ===\n");
-        b.append("عدد پایه: ").append(n(splitBase)).append("\n");
-        b.append("۳۶.۷۹٪: ").append(n(split3679)).append("\n");
-        b.append("۶۳.۲۱٪: ")
-                .append(n(splitBase - split3679)).append("\n\n");
+        b.append("پایین آوردن عیار: هدف ").append(n(lowerTarget))
+                .append(" | نقره ").append(n(silverPercent)).append("%")
+                .append(" | مقدار بار مصرفی ").append(n(lower.totalAlloyRequired)).append("g")
+                .append(" | نقره مورد نیاز ").append(n(lower.silverRequired)).append("g")
+                .append(" | بار بدون نقره ").append(n(lower.nonSilverRequired)).append("g")
+                .append(" | ۰.۴٪ کل وزن ").append(n(lower.fourPerThousand)).append("g")
+                .append(" | بار نهایی دیگر ").append(n(lower.finalOtherAlloy)).append("g")
+                .append(" | وزن پس از بار ").append(n(lower.totalAfterAlloy)).append("g")
+                .append("\n");
 
-        b.append("اصلاح افت عیار\n");
-        b.append("وزن پایه: ").append(n(correctionWeight)).append(" g\n");
-        b.append("عیار هدف: ").append(n(correctionTarget)).append("\n");
-        b.append("افت عیار: ").append(n(correctionDrop)).append("\n");
-        b.append("بار افزوده: ").append(n(correctionAdd)).append(" g\n");
-        b.append("جمع وزن: ")
-                .append(n(correctionWeight + correctionAdd)).append(" g\n");
+        b.append("محاسبه سریع: پایه ").append(n(splitBase))
+                .append(" | ۳۶.۷۹٪ ").append(n(split3679))
+                .append(" | ۶۳.۲۱٪ ").append(n(splitBase - split3679))
+                .append("\n");
+
+        b.append("اصلاح افت عیار: وزن پایه ").append(n(correctionWeight)).append("g")
+                .append(" | عیار هدف ").append(n(correctionTarget))
+                .append(" | افت عیار ").append(n(correctionDrop))
+                .append(" | بار افزوده ").append(n(correctionAdd)).append("g")
+                .append(" | جمع وزن ").append(n(correctionWeight + correctionAdd)).append("g")
+                .append("\n");
 
         return b.toString();
     }
