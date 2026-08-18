@@ -32,6 +32,7 @@ internal static class Program
         {
             main = new ModernMainForm();
             ModernLayoutPolish.Attach(main);
+            SettingsDrawerLayoutFix.Attach(main);
             ApplyTestSize(main);
 
             var page = Environment.GetEnvironmentVariable("GOLDBAR_UI_PAGE");
@@ -137,9 +138,6 @@ internal static class Program
                     main.Refresh();
                     Application.DoEvents();
 
-                    // Capture the actual Windows desktop pixels rather than relying on
-                    // DrawToBitmap. This verifies overlays such as the integrated
-                    // Settings drawer exactly as the operator sees them on screen.
                     var bounds = main.Bounds;
                     using var bitmap = new Bitmap(bounds.Width, bounds.Height);
                     using (var g = Graphics.FromImage(bitmap))
