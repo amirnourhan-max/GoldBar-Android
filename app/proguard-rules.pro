@@ -1,1 +1,1 @@
-# Gold Bar - no custom ProGuard rules required.
+# Zar Pulse currently uses no reflection-heavy libraries.

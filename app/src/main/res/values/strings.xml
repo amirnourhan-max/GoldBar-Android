@@ -1,3 +1,5 @@
 <resources>
-    <string name="app_name">Gold Bar</string>
+    <string name="app_name">Zar Pulse</string>
+    <string name="widget_name">Zar Pulse Market</string>
+    <string name="widget_description">قیمت لحظه‌ای طلا، آبشده، سکه و ارز</string>
 </resources>

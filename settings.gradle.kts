@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = 'GoldBar'
-include ':app'
+rootProject.name = "ZarPulse"
+include(":app")
