@@ -24,6 +24,7 @@
     <Compile Include="StableWeightFilter.cs" />
     <Compile Include="UiPrimitives.cs" />
     <Compile Include="ModernMainForm.cs" />
+    <Compile Include="ModernLayoutPolish.cs" />
     <Compile Include="ModernSplashForm.cs" />
   </ItemGroup>
   <ItemGroup>
