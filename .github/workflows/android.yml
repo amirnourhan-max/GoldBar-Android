@@ -38,7 +38,7 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Verify Excel business logic
+      - name: Verify edited Excel business logic
         run: |
           rm -rf build/logic-test
           mkdir -p build/logic-test
@@ -47,6 +47,16 @@ jobs:
             app/src/main/java/com/amirnourhan/goldbar/GoldCalculator.java \
             verify/Verify.java
           java -cp build/logic-test Verify
+
+      - name: Verify UI and keyboard implementation
+        run: |
+          ! grep -q "buildGuideCard" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
+          ! grep -q "inputGuide" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
+          grep -q "raiseTargetAssay" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
+          grep -q "lowerTargetAssay" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
+          grep -q "WindowInsets.Type.ime" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
+          grep -q "SOFT_INPUT_ADJUST_RESIZE" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
+          grep -q 'windowSoftInputMode="adjustResize"' app/src/main/AndroidManifest.xml
 
       - name: Build debug APK with official Android toolchain
         run: gradle --no-daemon --stacktrace :app:assembleDebug
@@ -62,7 +72,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Android emulator startup smoke test
+      - name: Android emulator startup and keyboard smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -71,34 +81,13 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: |
-            set -e
-            adb logcat -c
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb shell am force-stop com.amirnourhan.goldbar || true
-            adb shell am start -W -n com.amirnourhan.goldbar/.MainActivity
-            sleep 5
-            adb logcat -d > build/logcat.txt
-            PID="$(adb shell pidof com.amirnourhan.goldbar | tr -d '\r')"
-            if [ -z "$PID" ]; then
-              echo "Gold Bar process is not running after launch"
-              cat build/logcat.txt
-              exit 1
-            fi
-            adb shell uiautomator dump /sdcard/window.xml
-            adb pull /sdcard/window.xml build/window.xml
-            grep -q "GOLD BAR" build/window.xml
-            if grep -E "FATAL EXCEPTION: main|Process: com\.amirnourhan\.goldbar" build/logcat.txt; then
-              echo "Fatal exception detected"
-              exit 1
-            fi
-            echo "Startup smoke test PASS (pid=$PID)"
+          script: bash ci/emulator-smoke.sh
 
       - name: Upload APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-v1.0.2-debug-apk
+          name: GoldBar-v1.0.5-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
@@ -107,9 +96,15 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-smoke-test-diagnostics
+          name: GoldBar-smoke-test-diagnostics-v105
           path: |
             build/logcat.txt
-            build/window.xml
+            build/start.xml
+            build/tools.xml
+            build/keyboard.xml
+            build/keyboard.png
+            build/input-method.txt
+            build/pid-start.txt
+            build/pid.txt
           if-no-files-found: ignore
           retention-days: 14
