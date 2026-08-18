@@ -20,43 +20,163 @@ public sealed class SettingsDrawer : UserControl
     public SettingsDrawer(AppSettings settings)
     {
         _source=settings;
-        Dock=DockStyle.Fill;BackColor=Bg;RightToLeft=RightToLeft.Yes;Font=new Font("Segoe UI",9.5f);
-        Build();Populate();LoadValues();
+        Dock=DockStyle.Fill;
+        BackColor=Bg;
+        RightToLeft=RightToLeft.Yes;
+        Font=new Font("Segoe UI",9.5f);
+        Build();
+        Populate();
+        LoadValues();
     }
 
     private void Build()
     {
-        var root=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,BackColor=Bg,Padding=Padding.Empty};
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute,74));root.RowStyles.Add(new RowStyle(SizeType.Percent,100));root.RowStyles.Add(new RowStyle(SizeType.Absolute,72));
+        var root=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,BackColor=Bg,Margin=Padding.Empty,Padding=Padding.Empty};
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute,78));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute,72));
+        root.Controls.Add(BuildHeader(),0,0);
+        root.Controls.Add(BuildBody(),0,1);
+        root.Controls.Add(BuildFooter(),0,2);
+        Controls.Add(root);
+    }
 
-        var head=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,BackColor=Bg,Padding=new Padding(18,12,14,8)};head.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));head.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,44));
-        var titles=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,BackColor=Bg};titles.RowStyles.Add(new RowStyle(SizeType.Absolute,34));titles.RowStyles.Add(new RowStyle(SizeType.Percent,100));
-        var h=L("تنظیمات ترازو و گزارش",17,TextMain,true);h.Dock=DockStyle.Fill;h.TextAlign=ContentAlignment.MiddleRight;var s=L("RS-232، فیلتر پایداری و مسیر گزارش",8.8f,Muted,false);s.Dock=DockStyle.Fill;s.TextAlign=ContentAlignment.TopRight;titles.Controls.Add(h,0,0);titles.Controls.Add(s,0,1);
-        var close=Secondary("×");close.Dock=DockStyle.Fill;close.Font=new Font("Segoe UI",16,FontStyle.Bold);close.Click+=(_,_)=>CloseRequested?.Invoke();head.Controls.Add(titles,0,0);head.Controls.Add(close,1,0);
+    private Control BuildHeader()
+    {
+        var head=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,BackColor=Bg,Padding=new Padding(16,10,14,8)};
+        head.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+        head.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,44));
+        var titles=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,BackColor=Bg};
+        titles.RowStyles.Add(new RowStyle(SizeType.Absolute,36));
+        titles.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        var h=L("تنظیمات ترازو و گزارش",17,TextMain,true);h.Dock=DockStyle.Fill;h.TextAlign=ContentAlignment.MiddleRight;
+        var s=L("RS-232، فیلتر پایداری و مسیر گزارش",8.8f,Muted,false);s.Dock=DockStyle.Fill;s.TextAlign=ContentAlignment.TopRight;
+        titles.Controls.Add(h,0,0);titles.Controls.Add(s,0,1);
+        var close=Secondary("×");close.Dock=DockStyle.Fill;close.Font=new Font("Segoe UI",16,FontStyle.Bold);close.Click+=(_,_)=>CloseRequested?.Invoke();
+        head.Controls.Add(titles,0,0);head.Controls.Add(close,1,0);
+        return head;
+    }
 
-        var scroll=new Panel{Dock=DockStyle.Fill,AutoScroll=true,BackColor=Bg};
-        var stack=new FlowLayoutPanel{Dock=DockStyle.Top,AutoSize=true,FlowDirection=FlowDirection.TopDown,WrapContents=false,BackColor=Bg,Padding=new Padding(14,6,14,18),RightToLeft=RightToLeft.Yes};scroll.Controls.Add(stack);
-        stack.SizeChanged+=(_,_)=>{foreach(Control c in stack.Controls)c.Width=Math.Max(320,scroll.ClientSize.Width-42);};scroll.SizeChanged+=(_,_)=>{foreach(Control c in stack.Controls)c.Width=Math.Max(320,scroll.ClientSize.Width-42);};
+    private Control BuildBody()
+    {
+        var scroll=new Panel{Dock=DockStyle.Fill,AutoScroll=true,BackColor=Bg,Padding=Padding.Empty};
+        var content=new TableLayoutPanel{Dock=DockStyle.Top,Height=1110,ColumnCount=1,RowCount=4,BackColor=Bg,Padding=new Padding(12,4,12,12),Margin=Padding.Empty};
+        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+        content.RowStyles.Add(new RowStyle(SizeType.Absolute,138));
+        content.RowStyles.Add(new RowStyle(SizeType.Absolute,308));
+        content.RowStyles.Add(new RowStyle(SizeType.Absolute,448));
+        content.RowStyles.Add(new RowStyle(SizeType.Absolute,190));
+        content.Controls.Add(BuildReportCard(),0,0);
+        content.Controls.Add(BuildSerialCard(),0,1);
+        content.Controls.Add(BuildBehaviorCard(),0,2);
+        content.Controls.Add(BuildFormatCard(),0,3);
+        scroll.Controls.Add(content);
+        return scroll;
+    }
 
-        var report=Section("گزارش");
-        var rr=new TableLayoutPanel{Dock=DockStyle.Top,Height=52,ColumnCount=2,BackColor=Card};rr.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,72));rr.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,28));_report.Dock=DockStyle.Fill;var browse=Secondary("انتخاب پوشه");browse.Dock=DockStyle.Fill;browse.Click+=(_,_)=>ChooseFolder();rr.Controls.Add(_report,0,0);rr.Controls.Add(browse,1,0);report.Controls.Add(rr);stack.Controls.Add(report);
+    private Control BuildReportCard()
+    {
+        var card=CardShell("گزارش",3);
+        var layout=(TableLayoutPanel)card.Controls[0];
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute,34));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute,52));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        var pathRow=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,BackColor=Card,Margin=Padding.Empty};
+        pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,70));pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,30));
+        _report.Dock=DockStyle.Fill;
+        var browse=Secondary("انتخاب پوشه");browse.Dock=DockStyle.Fill;browse.Click+=(_,_)=>ChooseFolder();
+        pathRow.Controls.Add(_report,0,0);pathRow.Controls.Add(browse,1,0);
+        var note=L("مسیر فقط ذخیره می‌شود؛ ساخت پوشه هنگام ذخیره گزارش بررسی خواهد شد.",8.3f,Muted,false);note.Dock=DockStyle.Fill;note.TextAlign=ContentAlignment.MiddleRight;
+        layout.Controls.Add(pathRow,0,1);layout.Controls.Add(note,0,2);
+        return card;
+    }
 
-        var serial=Section("ارتباط سریال");serial.Controls.Add(Grid(("مدل",_model),("COM Port",_port),("Baud Rate",_baud),("Data Bits",_bits),("Parity",_parity),("Stop Bits",_stop),("Flow Control",_flow)));stack.Controls.Add(serial);
+    private Control BuildSerialCard()
+    {
+        var card=CardShell("ارتباط سریال",2);
+        var layout=(TableLayoutPanel)card.Controls[0];
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute,34));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        layout.Controls.Add(FieldMatrix(new[]{("مدل ترازو",(Control)_model),("COM Port",_port),("Baud Rate",_baud),("Data Bits",_bits),("Parity",_parity),("Stop Bits",_stop),("Flow Control",_flow)}),0,1);
+        return card;
+    }
 
-        var behavior=Section("خواندن وزن");
-        _auto.Dock=DockStyle.Top;_up.Dock=DockStyle.Top;_send.Dock=DockStyle.Top;_print.Dock=DockStyle.Top;_raw.Dock=DockStyle.Top;
-        behavior.Controls.Add(_raw);behavior.Controls.Add(_print);behavior.Controls.Add(_send);behavior.Controls.Add(_up);behavior.Controls.Add(_auto);
-        behavior.Controls.Add(Grid(("تعداد قرائت پایدار",_samples),("تلرانس پایداری (g)",_tolerance),("مهلت دریافت (ms)",_timeout)));
-        behavior.Controls.Add(Grid(("فرمان درخواست",_query),("پایان فرمان",_ending)));
-        var note=L("پیش‌فرض: Auto Read خاموش است. اگر روشن شود فقط وقتی چند قرائت پشت‌سرهم داخل تلرانس باشند وزن پذیرفته می‌شود.",8.8f,Muted,false);note.Dock=DockStyle.Top;note.Height=54;behavior.Controls.Add(note);
-        _test.Dock=DockStyle.Top;_test.Height=32;behavior.Controls.Add(_test);var testBtn=Secondary("تست اتصال و دریافت وزن");testBtn.Dock=DockStyle.Top;testBtn.Height=44;testBtn.Click+=async(_,_)=>await TestScale(testBtn);behavior.Controls.Add(testBtn);stack.Controls.Add(behavior);
+    private Control BuildBehaviorCard()
+    {
+        var card=CardShell("رفتار دریافت وزن",5);
+        var layout=(TableLayoutPanel)card.Controls[0];
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute,34));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute,178));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute,102));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute,82));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));
 
-        var format=Section("قالب وزن دریافتی");format.Controls.Add(Grid(("ممیز",_decimal),("قبل ممیز",_before),("بعد ممیز",_after),("حداقل بعد ممیز",_minAfter)));stack.Controls.Add(format);
+        var checks=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=5,BackColor=Card,Padding=Padding.Empty};
+        foreach(var c in new[]{_auto,_up,_send,_print,_raw}){c.Dock=DockStyle.Fill;checks.Controls.Add(c);}
+        layout.Controls.Add(checks,0,1);
+        layout.Controls.Add(FieldMatrix(new[]{("تعداد قرائت پایدار",(Control)_samples),("تلرانس پایداری (g)",_tolerance),("مهلت دریافت (ms)",_timeout)}),0,2);
+        layout.Controls.Add(FieldMatrix(new[]{("فرمان درخواست",(Control)_query),("پایان فرمان",_ending)}),0,3);
+        var testHost=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,BackColor=Card};
+        testHost.RowStyles.Add(new RowStyle(SizeType.Absolute,30));testHost.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        _test.Dock=DockStyle.Fill;_test.TextAlign=ContentAlignment.MiddleRight;
+        var btn=Secondary("تست اتصال و دریافت وزن");btn.Dock=DockStyle.Fill;btn.Click+=async(_,_)=>await TestScale(btn);
+        testHost.Controls.Add(_test,0,0);testHost.Controls.Add(btn,0,1);
+        layout.Controls.Add(testHost,0,4);
+        return card;
+    }
 
-        var foot=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=3,BackColor=Bg,Padding=new Padding(14,10,14,12)};foot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));foot.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,118));foot.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,150));
-        var reset=Secondary("بازنشانی");reset.Dock=DockStyle.Fill;reset.Click+=(_,_)=>ResetDefaults();var cancel=Secondary("بستن");cancel.Dock=DockStyle.Fill;cancel.Click+=(_,_)=>CloseRequested?.Invoke();var save=Primary("ذخیره تنظیمات");save.Dock=DockStyle.Fill;save.Click+=(_,_)=>Save();foot.Controls.Add(reset,0,0);foot.Controls.Add(cancel,1,0);foot.Controls.Add(save,2,0);
+    private Control BuildFormatCard()
+    {
+        var card=CardShell("قالب وزن دریافتی",2);
+        var layout=(TableLayoutPanel)card.Controls[0];
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute,34));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        layout.Controls.Add(FieldMatrix(new[]{("ممیز",(Control)_decimal),("قبل ممیز",_before),("بعد ممیز",_after),("حداقل بعد ممیز",_minAfter)}),0,1);
+        return card;
+    }
 
-        root.Controls.Add(head,0,0);root.Controls.Add(scroll,0,1);root.Controls.Add(foot,0,2);Controls.Add(root);
+    private Control BuildFooter()
+    {
+        var foot=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=3,BackColor=Bg,Padding=new Padding(12,10,12,12)};
+        foot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+        foot.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,116));
+        foot.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,150));
+        var reset=Secondary("بازنشانی");reset.Dock=DockStyle.Fill;reset.Click+=(_,_)=>ResetDefaults();
+        var close=Secondary("بستن");close.Dock=DockStyle.Fill;close.Click+=(_,_)=>CloseRequested?.Invoke();
+        var save=Primary("ذخیره تنظیمات");save.Dock=DockStyle.Fill;save.Click+=(_,_)=>Save();
+        foot.Controls.Add(reset,0,0);foot.Controls.Add(close,1,0);foot.Controls.Add(save,2,0);
+        return foot;
+    }
+
+    private static RoundedPanel CardShell(string title,int rows)
+    {
+        var card=new RoundedPanel{Dock=DockStyle.Fill,Margin=new Padding(2,6,2,6),Padding=new Padding(12),Radius=15,BackColor=Card,BorderColor=Border};
+        var layout=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=rows,BackColor=Card,Margin=Padding.Empty,Padding=Padding.Empty};
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+        var h=L(title,11.5f,TextMain,true);h.Dock=DockStyle.Fill;h.TextAlign=ContentAlignment.MiddleRight;
+        layout.Controls.Add(h,0,0);
+        card.Controls.Add(layout);
+        return card;
+    }
+
+    private static TableLayoutPanel FieldMatrix((string Label,Control Control)[] fields)
+    {
+        var rows=(int)Math.Ceiling(fields.Length/2.0);
+        var grid=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=rows,BackColor=Card,Margin=Padding.Empty,Padding=new Padding(0,2,0,0)};
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+        for(var r=0;r<rows;r++)grid.RowStyles.Add(new RowStyle(SizeType.Percent,100f/rows));
+        for(var i=0;i<fields.Length;i++)grid.Controls.Add(FieldHost(fields[i].Label,fields[i].Control),i%2,i/2);
+        return grid;
+    }
+
+    private static Control FieldHost(string label,Control control)
+    {
+        var host=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,BackColor=Card,Margin=new Padding(4,3,4,3)};
+        host.RowStyles.Add(new RowStyle(SizeType.Absolute,20));host.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        var l=L(label,8.1f,Muted,false);l.Dock=DockStyle.Fill;l.TextAlign=ContentAlignment.MiddleRight;
+        control.Dock=DockStyle.Fill;
+        host.Controls.Add(l,0,0);host.Controls.Add(control,0,1);
+        return host;
     }
 
     private void ChooseFolder(){using var dlg=new FolderBrowserDialog{Description="پوشه گزارش‌های Gold Bar را انتخاب کن",UseDescriptionForTitle=true};if(Directory.Exists(_report.Text))dlg.SelectedPath=_report.Text;if(dlg.ShowDialog(this)==DialogResult.OK)_report.Text=dlg.SelectedPath;}
@@ -76,14 +196,12 @@ public sealed class SettingsDrawer : UserControl
     private void Populate(){_model.Items.AddRange(new object[]{"A&D","Custom / Generic"});foreach(var p in SerialPort.GetPortNames().OrderBy(x=>x))_port.Items.Add(p);if(!_port.Items.Contains("COM1"))_port.Items.Add("COM1");_baud.Items.AddRange(new object[]{"1200","2400","4800","9600","19200","38400","57600","115200"});_bits.Items.AddRange(new object[]{"7","8"});_parity.Items.AddRange(Enum.GetNames<Parity>());_stop.Items.AddRange(new object[]{nameof(StopBits.One),nameof(StopBits.OnePointFive),nameof(StopBits.Two)});_flow.Items.AddRange(Enum.GetNames<Handshake>());_ending.Items.AddRange(new object[]{"CRLF","CR","LF","None"});}
     private void LoadValues(){_report.Text=_source.ReportFolder;Select(_model,_source.ScaleModel);Select(_port,_source.PortName);Select(_baud,_source.BaudRate.ToString());Select(_bits,_source.DataBits.ToString());Select(_parity,_source.Parity);Select(_stop,_source.StopBits);Select(_flow,_source.Handshake);_auto.Checked=_source.AutoRead;_up.Checked=_source.ReadOnUpArrow;_send.Checked=_source.SendQueryOnUpArrow;_print.Checked=_source.ReceivePrintKey;_raw.Checked=_source.ShowRawText;_samples.Value=Math.Clamp(_source.StableSampleCount,(int)_samples.Minimum,(int)_samples.Maximum);_tolerance.Value=(decimal)Math.Clamp(_source.StableToleranceGrams,(double)_tolerance.Minimum,(double)_tolerance.Maximum);_timeout.Value=Math.Clamp(_source.ReadTimeoutMs,(int)_timeout.Minimum,(int)_timeout.Maximum);_query.Text=_source.QueryCommand;Select(_ending,_source.QueryLineEnding);_decimal.Text=_source.DecimalSeparator;_before.Value=Math.Clamp(_source.CharactersBeforeDecimal,(int)_before.Minimum,(int)_before.Maximum);_after.Value=Math.Clamp(_source.CharactersAfterDecimal,(int)_after.Minimum,(int)_after.Maximum);_minAfter.Value=Math.Clamp(_source.MinimumAfterDecimal,(int)_minAfter.Minimum,(int)_minAfter.Maximum);}
 
-    private static RoundedPanel Section(string title){var p=new RoundedPanel{Width=380,AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,BackColor=Card,BorderColor=Border,Radius=16,Padding=new Padding(14),Margin=new Padding(0,0,0,12)};var h=L(title,11.5f,TextMain,true);h.Dock=DockStyle.Top;h.Height=34;p.Controls.Add(h);return p;}
-    private static TableLayoutPanel Grid(params (string Label,Control C)[] fields){var g=new TableLayoutPanel{Dock=DockStyle.Top,AutoSize=true,ColumnCount=2,BackColor=Card,RightToLeft=RightToLeft.Yes,Margin=new Padding(0,5,0,8)};g.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));g.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));foreach(var f in fields){var host=new TableLayoutPanel{Dock=DockStyle.Fill,AutoSize=true,ColumnCount=1,BackColor=Card,Margin=new Padding(4)};var l=L(f.Label,8.2f,Muted,false);l.Dock=DockStyle.Top;l.Height=22;f.C.Dock=DockStyle.Top;f.C.Height=36;host.Controls.Add(l);host.Controls.Add(f.C);g.Controls.Add(host);}return g;}
-    private static TextBox Input()=>new(){BackColor=Card2,ForeColor=TextMain,BorderStyle=BorderStyle.FixedSingle,Font=new Font("Segoe UI",10.2f),RightToLeft=RightToLeft.No,Height=36};
-    private static ComboBox Combo()=>new(){BackColor=Card2,ForeColor=TextMain,FlatStyle=FlatStyle.Flat,DropDownStyle=ComboBoxStyle.DropDown,Font=new Font("Segoe UI",9.8f),RightToLeft=RightToLeft.No,Height=36};
-    private static NumericUpDown Number(int min,int max)=>new(){Minimum=min,Maximum=max,BackColor=Card2,ForeColor=TextMain,BorderStyle=BorderStyle.FixedSingle,Font=new Font("Segoe UI",9.8f),TextAlign=HorizontalAlignment.Center,Height=36};
-    private static NumericUpDown DecimalNumber(decimal min,decimal max,decimal inc,int decimals)=>new(){Minimum=min,Maximum=max,Increment=inc,DecimalPlaces=decimals,BackColor=Card2,ForeColor=TextMain,BorderStyle=BorderStyle.FixedSingle,Font=new Font("Segoe UI",9.8f),TextAlign=HorizontalAlignment.Center,Height=36};
-    private static CheckBox Check(string text)=>new(){Text=text,ForeColor=TextMain,AutoSize=false,Height=36,Padding=new Padding(4,5,4,5),Font=new Font("Segoe UI",9f)};
+    private static TextBox Input()=>new(){BackColor=Card2,ForeColor=TextMain,BorderStyle=BorderStyle.FixedSingle,Font=new Font("Segoe UI",10f),RightToLeft=RightToLeft.No,Height=36};
+    private static ComboBox Combo()=>new(){BackColor=Card2,ForeColor=TextMain,FlatStyle=FlatStyle.Flat,DropDownStyle=ComboBoxStyle.DropDown,Font=new Font("Segoe UI",9.6f),RightToLeft=RightToLeft.No,Height=36};
+    private static NumericUpDown Number(int min,int max)=>new(){Minimum=min,Maximum=max,BackColor=Card2,ForeColor=TextMain,BorderStyle=BorderStyle.FixedSingle,Font=new Font("Segoe UI",9.6f),TextAlign=HorizontalAlignment.Center,Height=36};
+    private static NumericUpDown DecimalNumber(decimal min,decimal max,decimal inc,int decimals)=>new(){Minimum=min,Maximum=max,Increment=inc,DecimalPlaces=decimals,BackColor=Card2,ForeColor=TextMain,BorderStyle=BorderStyle.FixedSingle,Font=new Font("Segoe UI",9.6f),TextAlign=HorizontalAlignment.Center,Height=36};
+    private static CheckBox Check(string text)=>new(){Text=text,ForeColor=TextMain,AutoSize=false,Padding=new Padding(4,3,4,3),Font=new Font("Segoe UI",8.8f),TextAlign=ContentAlignment.MiddleRight};
     private static Label L(string text,float size,Color color,bool bold)=>new(){Text=text,AutoSize=false,ForeColor=color,Font=new Font("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular),RightToLeft=RightToLeft.Yes,TextAlign=ContentAlignment.MiddleRight};
-    private static RoundButton Primary(string t)=>Btn(t,Gold,Color.FromArgb(25,18,2),Gold);private static RoundButton Secondary(string t)=>Btn(t,Card2,GoldSoft,Border);private static RoundButton Btn(string t,Color bg,Color fg,Color border){var b=new RoundButton{Text=t,Radius=11,FlatStyle=FlatStyle.Flat,BackColor=bg,ForeColor=fg,Font=new Font("Segoe UI",9.3f,FontStyle.Bold),Cursor=Cursors.Hand,Margin=new Padding(4)};b.FlatAppearance.BorderColor=border;b.FlatAppearance.BorderSize=1;return b;}
+    private static RoundButton Primary(string t)=>Btn(t,Gold,Color.FromArgb(25,18,2),Gold);private static RoundButton Secondary(string t)=>Btn(t,Card2,GoldSoft,Border);private static RoundButton Btn(string t,Color bg,Color fg,Color border){var b=new RoundButton{Text=t,Radius=11,FlatStyle=FlatStyle.Flat,BackColor=bg,ForeColor=fg,Font=new Font("Segoe UI",9.2f,FontStyle.Bold),Cursor=Cursors.Hand,Margin=new Padding(3)};b.FlatAppearance.BorderColor=border;b.FlatAppearance.BorderSize=1;return b;}
     private static void Select(ComboBox c,string v){var i=c.FindStringExact(v);if(i>=0)c.SelectedIndex=i;else c.Text=v;}private static string Text(ComboBox c,string f)=>string.IsNullOrWhiteSpace(c.Text)?f:c.Text.Trim();private static int Int(ComboBox c,int f)=>int.TryParse(c.Text,out var v)?v:f;
 }
