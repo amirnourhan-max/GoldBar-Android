@@ -1,4 +1,4 @@
-# Gold Bar Windows v2 production build
+# Gold Bar Windows v2 production build - CI trigger after PR creation
 name: Build Gold Bar Windows Installer
 
 on:
