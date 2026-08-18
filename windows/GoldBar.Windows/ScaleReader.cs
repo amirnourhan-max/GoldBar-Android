@@ -32,9 +32,7 @@ public sealed class ScaleReader : IDisposable
         _settings = settings;
         LastStartError = null;
         lock (_gate) _stableSamples.Clear();
-
-        if (startIfAuto && settings.AutoRead)
-            _ = StartAsync(_lifetime.Token);
+        if (startIfAuto && settings.AutoRead) _ = StartAsync(_lifetime.Token);
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -45,47 +43,33 @@ public sealed class ScaleReader : IDisposable
             if (_port?.IsOpen == true) return;
             await Task.Run(StartCore, cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             LastStartError = ex.Message;
             StatusChanged?.Invoke("ترازو: " + ex.Message, false);
             throw;
         }
-        finally
-        {
-            _startGate.Release();
-        }
+        finally { _startGate.Release(); }
     }
 
     public void Start() => StartCore();
 
     private void StartCore()
     {
-        if (_settings is null)
-            throw new InvalidOperationException("تنظیمات ترازو بارگذاری نشده است.");
+        if (_settings is null) throw new InvalidOperationException("تنظیمات ترازو بارگذاری نشده است.");
         if (_port?.IsOpen == true) return;
-
-        var settings = _settings;
-        var p = new SerialPort(
-            settings.PortName,
-            settings.BaudRate,
-            settings.GetParity(),
-            settings.DataBits,
-            settings.GetStopBits())
+        var s = _settings;
+        var p = new SerialPort(s.PortName, s.BaudRate, s.GetParity(), s.DataBits, s.GetStopBits())
         {
-            Handshake = settings.GetHandshake(),
+            Handshake = s.GetHandshake(),
             Encoding = Encoding.ASCII,
-            ReadTimeout = Math.Max(250, settings.ReadTimeoutMs),
+            ReadTimeout = Math.Max(250, s.ReadTimeoutMs),
             WriteTimeout = 750,
             DtrEnable = false,
-            RtsEnable = settings.GetHandshake() is Handshake.RequestToSend or Handshake.RequestToSendXOnXOff,
+            RtsEnable = s.GetHandshake() is Handshake.RequestToSend or Handshake.RequestToSendXOnXOff,
             ReadBufferSize = 1024
         };
-
         p.DataReceived += OnDataReceived;
         p.ErrorReceived += OnErrorReceived;
         try
@@ -93,7 +77,7 @@ public sealed class ScaleReader : IDisposable
             p.Open();
             lock (_gate) _port = p;
             LastStartError = null;
-            StatusChanged?.Invoke($"ترازو: متصل {settings.PortName}", true);
+            StatusChanged?.Invoke($"ترازو: متصل {s.PortName}", true);
         }
         catch
         {
@@ -106,10 +90,9 @@ public sealed class ScaleReader : IDisposable
 
     public void Stop()
     {
-        var oldLifetime = Interlocked.Exchange(ref _lifetime, new CancellationTokenSource());
-        try { oldLifetime.Cancel(); } catch { }
-        oldLifetime.Dispose();
-
+        var old = Interlocked.Exchange(ref _lifetime, new CancellationTokenSource());
+        try { old.Cancel(); } catch { }
+        old.Dispose();
         lock (_gate)
         {
             try
@@ -136,33 +119,24 @@ public sealed class ScaleReader : IDisposable
 
     public async Task<double> ReadNowAsync(CancellationToken cancellationToken = default)
     {
-        if (_settings is null)
-            throw new InvalidOperationException("تنظیمات ترازو مشخص نشده است.");
-
-        if (_port?.IsOpen != true)
-            await StartAsync(cancellationToken).ConfigureAwait(false);
+        if (_settings is null) throw new InvalidOperationException("تنظیمات ترازو مشخص نشده است.");
+        if (_port?.IsOpen != true) await StartAsync(cancellationToken).ConfigureAwait(false);
 
         var tcs = new TaskCompletionSource<double>(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_gate) _nextWeight = tcs;
-
         if (_settings.SendQueryOnUpArrow && !string.IsNullOrEmpty(_settings.QueryCommand))
         {
             try
             {
-                var port = _port;
-                if (port?.IsOpen == true)
-                    await Task.Run(() => port.Write(_settings.BuildQuery()), cancellationToken).ConfigureAwait(false);
+                var p = _port;
+                if (p?.IsOpen == true) await Task.Run(() => p.Write(_settings.BuildQuery()), cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception ex)
-            {
-                StatusChanged?.Invoke("ارسال فرمان به ترازو ناموفق بود: " + ex.Message, false);
-            }
+            catch (Exception ex) { StatusChanged?.Invoke("ارسال فرمان به ترازو ناموفق بود: " + ex.Message, false); }
         }
 
         using var timeout = new CancellationTokenSource(Math.Max(350, _settings.ReadTimeoutMs));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, cancellationToken);
         using var reg = linked.Token.Register(() => tcs.TrySetCanceled(linked.Token));
-
         try
         {
             var value = await tcs.Task.ConfigureAwait(false);
@@ -180,10 +154,7 @@ public sealed class ScaleReader : IDisposable
         }
         finally
         {
-            lock (_gate)
-            {
-                if (ReferenceEquals(_nextWeight, tcs)) _nextWeight = null;
-            }
+            lock (_gate) if (ReferenceEquals(_nextWeight, tcs)) _nextWeight = null;
         }
     }
 
@@ -191,15 +162,11 @@ public sealed class ScaleReader : IDisposable
     {
         weight = 0;
         if (string.IsNullOrWhiteSpace(raw)) return false;
-
         var normalized = raw.Trim();
-        if (!string.IsNullOrEmpty(settings.DecimalSeparator) && settings.DecimalSeparator != ".")
-            normalized = normalized.Replace(settings.DecimalSeparator, ".");
+        if (!string.IsNullOrEmpty(settings.DecimalSeparator) && settings.DecimalSeparator != ".") normalized = normalized.Replace(settings.DecimalSeparator, ".");
         normalized = normalized.Replace(',', '.');
-
         var matches = Regex.Matches(normalized, @"[-+]?\d+(?:\.\d+)?", RegexOptions.CultureInvariant);
         if (matches.Count == 0) return false;
-
         for (var i = matches.Count - 1; i >= 0; i--)
         {
             var token = matches[i].Value;
@@ -211,9 +178,7 @@ public sealed class ScaleReader : IDisposable
                 if (settings.CharactersBeforeDecimal > 0 && before > settings.CharactersBeforeDecimal + 4) continue;
                 if (settings.CharactersAfterDecimal > 0 && after > settings.CharactersAfterDecimal) continue;
             }
-
-            if (double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
-                && double.IsFinite(parsed))
+            if (double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && double.IsFinite(parsed))
             {
                 weight = parsed;
                 return true;
@@ -222,99 +187,66 @@ public sealed class ScaleReader : IDisposable
         return false;
     }
 
-    private void OnErrorReceived(object? sender, SerialErrorReceivedEventArgs e)
-        => StatusChanged?.Invoke("خطای پورت: " + e.EventType, false);
+    public static bool IsStableSeries(IEnumerable<double> values, int requiredSamples, double toleranceGrams, out double stableWeight)
+    {
+        stableWeight = double.NaN;
+        var data = values.Where(double.IsFinite).TakeLast(Math.Max(2, requiredSamples)).ToArray();
+        if (data.Length < Math.Max(2, requiredSamples)) return false;
+        if (data.Max() - data.Min() > Math.Max(0.000001, toleranceGrams)) return false;
+        stableWeight = data.Average();
+        return true;
+    }
+
+    private void OnErrorReceived(object? sender, SerialErrorReceivedEventArgs e) => StatusChanged?.Invoke("خطای پورت: " + e.EventType, false);
 
     private void OnDataReceived(object? sender, SerialDataReceivedEventArgs e)
     {
         try
         {
-            SerialPort? p;
-            AppSettings? settings;
-            lock (_gate)
-            {
-                p = _port;
-                settings = _settings;
-            }
-            if (p is null || settings is null || !p.IsOpen) return;
-
+            SerialPort? p; AppSettings? s;
+            lock (_gate) { p = _port; s = _settings; }
+            if (p is null || s is null || !p.IsOpen) return;
             var text = p.ReadExisting();
             if (string.IsNullOrEmpty(text)) return;
             RawReceived?.Invoke(text);
-
-            var parsedValues = new List<double>();
+            var parsed = new List<double>();
             lock (_gate)
             {
                 _buffer.Append(text);
                 var all = _buffer.ToString();
                 var parts = Regex.Split(all, "[\\r\\n]+");
                 _buffer.Clear();
-
-                if (!all.EndsWith("\r") && !all.EndsWith("\n") && parts.Length > 0)
-                    _buffer.Append(parts[^1]);
-
-                var limit = all.EndsWith("\r") || all.EndsWith("\n")
-                    ? parts.Length
-                    : Math.Max(0, parts.Length - 1);
-
+                if (!all.EndsWith("\r") && !all.EndsWith("\n") && parts.Length > 0) _buffer.Append(parts[^1]);
+                var limit = all.EndsWith("\r") || all.EndsWith("\n") ? parts.Length : Math.Max(0, parts.Length - 1);
                 for (var i = 0; i < limit; i++)
                 {
                     var frame = parts[i].Trim();
-                    if (frame.Length == 0) continue;
-                    if (TryParseWeight(frame, settings, out var value))
-                        parsedValues.Add(value);
+                    if (frame.Length > 0 && TryParseWeight(frame, s, out var value)) parsed.Add(value);
                 }
-
-                if (_buffer.Length >= 6 && TryParseWeight(_buffer.ToString(), settings, out var buffered))
-                {
-                    parsedValues.Add(buffered);
-                    _buffer.Clear();
-                }
+                if (_buffer.Length >= 6 && TryParseWeight(_buffer.ToString(), s, out var buffered)) { parsed.Add(buffered); _buffer.Clear(); }
             }
-
-            foreach (var value in parsedValues)
-                HandleParsedWeight(value, settings);
+            foreach (var value in parsed) HandleParsedWeight(value, s);
         }
-        catch (Exception ex)
-        {
-            StatusChanged?.Invoke("خطای دریافت ترازو: " + ex.Message, false);
-        }
+        catch (Exception ex) { StatusChanged?.Invoke("خطای دریافت ترازو: " + ex.Message, false); }
     }
 
-    private void HandleParsedWeight(double value, AppSettings settings)
+    private void HandleParsedWeight(double value, AppSettings s)
     {
         LastRawWeight = value;
-
         TaskCompletionSource<double>? waiter;
         lock (_gate) waiter = _nextWeight;
-        waiter?.TrySetResult(value); // manual ↑ is immediate and never waits for stability filtering.
-
-        if (!settings.AutoRead) return;
-
-        if (!settings.StableAutoReadOnly)
-        {
-            PublishAccepted(value);
-            return;
-        }
+        waiter?.TrySetResult(value); // ↑ is immediate.
+        if (!s.AutoRead) return;
+        if (!s.StableAutoReadOnly) { PublishAccepted(value); return; }
 
         double? accepted = null;
         lock (_gate)
         {
             _stableSamples.Enqueue(value);
-            while (_stableSamples.Count > settings.StableSampleCount)
-                _stableSamples.Dequeue();
-
-            if (_stableSamples.Count >= settings.StableSampleCount)
-            {
-                var min = _stableSamples.Min();
-                var max = _stableSamples.Max();
-                if (max - min <= settings.StableToleranceGrams)
-                    accepted = _stableSamples.Average();
-            }
+            while (_stableSamples.Count > s.StableSampleCount) _stableSamples.Dequeue();
+            if (IsStableSeries(_stableSamples, s.StableSampleCount, s.StableToleranceGrams, out var stable)) accepted = stable;
         }
-
-        if (accepted.HasValue)
-            PublishAccepted(accepted.Value);
+        if (accepted.HasValue) PublishAccepted(accepted.Value);
     }
 
     private void PublishAccepted(double value)
