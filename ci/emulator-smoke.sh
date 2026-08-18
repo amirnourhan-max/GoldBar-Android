@@ -5,7 +5,7 @@ mkdir -p build
 adb logcat -c
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am force-stop com.amirnourhan.goldbar
-adb shell am start -W -n com.amirnourhan.goldbar/.MainActivityV106Fixed
+adb shell am start -W -n com.amirnourhan.goldbar/.MainActivityV107
 sleep 4
 
 # Capture diagnostics before making assertions so a startup failure is debuggable.
@@ -17,6 +17,7 @@ test -s build/pid-start.txt
 adb shell uiautomator dump /sdcard/start.xml
 adb pull /sdcard/start.xml build/start.xml
 grep -q 'content-desc="gold-bar-title"' build/start.xml
+grep -q 'content-desc="summary-after-alloy"' build/start.xml
 
 # Scroll until the in-app quick calculator is visible.
 found=0
