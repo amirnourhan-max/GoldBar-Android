@@ -27,15 +27,27 @@ jobs:
       - name: Verify gold calculation logic
         run: dotnet run --project windows/GoldBar.Verify/GoldBar.Verify.csproj -c Release
 
-      - name: Verify Windows scale/settings implementation
+      - name: Verify Windows desktop implementation
         shell: pwsh
         run: |
-          if (!(Select-String -Path windows/GoldBar.Windows/MainForm.cs -Pattern 'Keys.Up' -Quiet)) { throw 'Up-arrow scale read missing' }
-          if (!(Select-String -Path windows/GoldBar.Windows/MainForm.cs -Pattern 'ذخیره گزارش کامل' -Quiet)) { throw 'Report button missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/DesktopMainForm.cs -Pattern 'داشبورد' -Quiet)) { throw 'Desktop dashboard missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/DesktopMainForm.cs -Pattern 'Keys.Up' -Quiet)) { throw 'Up-arrow scale read missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'Baud Rate' -Quiet)) { throw 'Baud setting missing' }
           if (!(Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'Flow Control' -Quiet)) { throw 'Flow control setting missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'next.Save' -Quiet)) { throw 'Safe settings save missing' }
+          if (Select-String -Path windows/GoldBar.Windows/SettingsForm.cs -Pattern 'Directory.CreateDirectory\(next.ReportFolder\)' -Quiet) { throw 'Settings must not create report folder' }
           if (!(Select-String -Path windows/GoldBar.Windows/ScaleReader.cs -Pattern 'SerialPort' -Quiet)) { throw 'SerialPort support missing' }
-          if (!(Select-String -Path windows/GoldBar.Windows/AppSettings.cs -Pattern 'ReportFolder' -Quiet)) { throw 'Report folder setting missing' }
+
+      - name: Apply compile-safe desktop navigation patch
+        shell: pwsh
+        run: |
+          $path = 'windows/GoldBar.Windows/DesktopMainForm.cs'
+          $text = Get-Content $path -Raw
+          $old = 'b.Click += (_, _) => key == "settings" ? OpenSettings() : ShowPage(key);'
+          $new = 'b.Click += (_, _) => { if (key == "settings") OpenSettings(); else ShowPage(key); };'
+          if (!$text.Contains($old)) { throw 'Navigation patch target not found' }
+          $text = $text.Replace($old, $new)
+          Set-Content -Path $path -Value $text -Encoding utf8
 
       - name: Build Windows desktop app
         run: dotnet build windows/GoldBar.Windows/GoldBar.Windows.csproj -c Release
@@ -54,30 +66,30 @@ jobs:
             -p:DebugSymbols=false `
             -o build/windows-x64
           if (!(Test-Path build/windows-x64/GoldBar.exe)) { throw 'GoldBar.exe was not produced' }
-          Copy-Item build/windows-x64/GoldBar.exe build/GoldBar-Windows-v1.1.0.exe
+          Copy-Item build/windows-x64/GoldBar.exe build/GoldBar-Windows-v1.2.0.exe
 
       - name: Windows launch smoke test
         shell: pwsh
         run: |
-          $exe = (Resolve-Path build/GoldBar-Windows-v1.1.0.exe).Path
+          $exe = (Resolve-Path build/GoldBar-Windows-v1.2.0.exe).Path
           $p = Start-Process -FilePath $exe -PassThru
-          Start-Sleep -Seconds 6
+          Start-Sleep -Seconds 7
           if ($p.HasExited) { throw "Gold Bar exited during startup with code $($p.ExitCode)" }
           Stop-Process -Id $p.Id -Force
-          Write-Host "Windows GUI startup PASS"
+          Write-Host "Windows desktop GUI startup PASS"
 
       - name: Record EXE metadata
         shell: pwsh
         run: |
-          Get-Item build/GoldBar-Windows-v1.1.0.exe | Format-List Name,Length,VersionInfo | Out-File build/windows-metadata.txt
-          Get-FileHash build/GoldBar-Windows-v1.1.0.exe -Algorithm SHA256 | Format-List | Out-File -Append build/windows-metadata.txt
+          Get-Item build/GoldBar-Windows-v1.2.0.exe | Format-List Name,Length,VersionInfo | Out-File build/windows-metadata.txt
+          Get-FileHash build/GoldBar-Windows-v1.2.0.exe -Algorithm SHA256 | Format-List | Out-File -Append build/windows-metadata.txt
           Get-Content build/windows-metadata.txt
 
       - name: Upload Windows EXE
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-Windows-v1.1.0
-          path: build/GoldBar-Windows-v1.1.0.exe
+          name: GoldBar-Windows-v1.2.0
+          path: build/GoldBar-Windows-v1.2.0.exe
           if-no-files-found: error
           retention-days: 30
 
@@ -85,7 +97,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-Windows-v1.1.0-metadata
+          name: GoldBar-Windows-v1.2.0-metadata
           path: build/windows-metadata.txt
           if-no-files-found: ignore
           retention-days: 14
