@@ -53,13 +53,15 @@ jobs:
           ! grep -q "buildGuideCard" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
           ! grep -q "inputGuide" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
           grep -q "WindowInsets.Type.ime" app/src/main/java/com/amirnourhan/goldbar/MainActivity.java
-          grep -q "GOLD BAR (by:Amirnourhan)" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106.java
-          grep -q "4mirnourhan" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106.java
-          grep -q "محاسبه سریع" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106.java
-          grep -q "ذخیره گزارش کامل" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106.java
-          grep -q "MediaStore.Downloads" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106.java
+          grep -q "GOLD BAR (by:Amirnourhan)" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106Fixed.java
+          grep -q "4mirnourhan" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106Fixed.java
+          grep -q "محاسبه سریع" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106Fixed.java
+          grep -q "ذخیره گزارش کامل" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106Fixed.java
+          grep -q "ACTION_CREATE_DOCUMENT" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106Fixed.java
+          grep -q "current != null" app/src/main/java/com/amirnourhan/goldbar/MainActivityV106Fixed.java
           grep -q "class QuickCalcWidget" app/src/main/java/com/amirnourhan/goldbar/QuickCalcWidget.java
           grep -q "class QuickCalcActivity" app/src/main/java/com/amirnourhan/goldbar/QuickCalcActivity.java
+          grep -q "MainActivityV106Fixed" app/src/main/AndroidManifest.xml
           grep -q "quick_calc_widget_info" app/src/main/AndroidManifest.xml
           grep -q 'windowSoftInputMode="adjustResize"' app/src/main/AndroidManifest.xml
           test -s app/src/main/res/layout/widget_quick_calc.xml
@@ -105,12 +107,15 @@ jobs:
         with:
           name: GoldBar-smoke-test-diagnostics-v106
           path: |
+            build/logcat-initial.txt
             build/logcat.txt
             build/start.xml
             build/tools.xml
             build/keyboard.xml
             build/keyboard.png
             build/input-method.txt
+            build/report.xml
+            build/package.txt
             build/pid-start.txt
             build/pid.txt
           if-no-files-found: ignore
