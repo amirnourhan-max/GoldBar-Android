@@ -16,6 +16,11 @@ internal static class Program
             RunSettingsSelfTest();
             return;
         }
+        if (Environment.GetEnvironmentVariable("GOLDBAR_SCALE_SELFTEST") == "1")
+        {
+            RunScaleSelfTest();
+            return;
+        }
 
         using var splash = new SplashForm();
         splash.Show();
@@ -72,6 +77,20 @@ internal static class Program
             throw new InvalidOperationException("Saving settings must not create the report directory.");
         var output = Environment.GetEnvironmentVariable("GOLDBAR_SELFTEST_OUT");
         if (!string.IsNullOrWhiteSpace(output)) File.WriteAllText(output, "SETTINGS SELFTEST PASS");
+    }
+
+    private static void RunScaleSelfTest()
+    {
+        if (new AppSettings().AutoRead)
+            throw new InvalidOperationException("AutoRead must be OFF by default.");
+        if (ScaleReader.IsStableSeries(new[] { 100.00, 100.12, 99.96 }, 3, 0.02, out _))
+            throw new InvalidOperationException("Noisy scale series was incorrectly accepted.");
+        if (!ScaleReader.IsStableSeries(new[] { 100.000, 100.008, 100.012 }, 3, 0.02, out var stable))
+            throw new InvalidOperationException("Stable scale series was rejected.");
+        if (Math.Abs(stable - 100.0066666667) > 0.0001)
+            throw new InvalidOperationException("Stable weight average is incorrect.");
+        var output = Environment.GetEnvironmentVariable("GOLDBAR_SELFTEST_OUT");
+        if (!string.IsNullOrWhiteSpace(output)) File.WriteAllText(output, "SCALE STABILITY SELFTEST PASS");
     }
 
     private static void ApplyTestPage(DesktopMainFormV2 main)
