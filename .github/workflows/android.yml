@@ -43,19 +43,25 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p = Path('app/src/main/java/com/amirnourhan/goldbar/MainActivity.java')
-          s = p.read_text(encoding='utf-8')
-          s = s.replace('import android.view.WindowInsetsController;\n', '')
-          bad = '''        if (android.os.Build.VERSION.SDK_INT >= 30) {
-              WindowInsetsController c = getWindow().getInsetsController();
-              if (c != null) c.setSystemBarsAppearance(0,
-                      WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
-                      WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
-          }
-
-          '''
-          if bad not in s:
-              raise SystemExit('Expected WindowInsets crash block not found')
-          p.write_text(s.replace(bad, ''), encoding='utf-8')
+          lines = p.read_text(encoding='utf-8').splitlines(True)
+          out = []
+          skipping = False
+          removed = False
+          for line in lines:
+              if line.strip() == 'import android.view.WindowInsetsController;':
+                  continue
+              if not removed and line.strip() == 'if (android.os.Build.VERSION.SDK_INT >= 30) {':
+                  skipping = True
+                  removed = True
+                  continue
+              if skipping:
+                  if line.strip() == '}':
+                      skipping = False
+                  continue
+              out.append(line)
+          if not removed or skipping:
+              raise SystemExit('WindowInsets startup block was not removed cleanly')
+          p.write_text(''.join(out), encoding='utf-8')
           print('Startup crash patch applied')
           PY
 
