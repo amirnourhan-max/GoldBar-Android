@@ -4,15 +4,22 @@ namespace GoldBar.Windows;
 
 public sealed class SettingsForm : Form
 {
-    private static readonly Color Bg = Color.FromArgb(8, 9, 11);
-    private static readonly Color Card = Color.FromArgb(18, 20, 25);
-    private static readonly Color Card2 = Color.FromArgb(27, 30, 36);
+    private static readonly Color Bg = Color.FromArgb(7, 9, 12);
+    private static readonly Color Panel = Color.FromArgb(13, 16, 22);
+    private static readonly Color Card = Color.FromArgb(18, 22, 29);
+    private static readonly Color Card2 = Color.FromArgb(24, 29, 38);
+    private static readonly Color Border = Color.FromArgb(48, 55, 68);
     private static readonly Color Gold = Color.FromArgb(247, 211, 112);
     private static readonly Color TextMain = Color.FromArgb(246, 244, 237);
-    private static readonly Color Muted = Color.FromArgb(155, 161, 173);
+    private static readonly Color Muted = Color.FromArgb(151, 160, 176);
     private static readonly Color Danger = Color.FromArgb(255, 105, 105);
+    private static readonly Color Success = Color.FromArgb(102, 220, 150);
 
-    private readonly AppSettings _settings;
+    private readonly AppSettings _source;
+    private readonly Panel _page = new() { Dock = DockStyle.Fill, BackColor = Bg };
+    private readonly Button _navReport = Nav("گزارش");
+    private readonly Button _navScale = Nav("ترازو / RS-232");
+
     private readonly TextBox _reportFolder = Input();
     private readonly ComboBox _model = Combo();
     private readonly ComboBox _port = Combo();
@@ -20,31 +27,30 @@ public sealed class SettingsForm : Form
     private readonly ComboBox _dataBits = Combo();
     private readonly ComboBox _parity = Combo();
     private readonly ComboBox _stopBits = Combo();
-    private readonly ComboBox _handshake = Combo();
+    private readonly ComboBox _flow = Combo();
     private readonly TextBox _decimal = Input();
     private readonly NumericUpDown _before = Number(0, 20);
     private readonly NumericUpDown _after = Number(0, 20);
     private readonly NumericUpDown _minAfter = Number(0, 20);
-    private readonly CheckBox _receivePrint = Check("دریافت وزن با فشردن کلید PRINT روی ترازو");
-    private readonly CheckBox _autoRead = Check("فعال‌سازی خواندن خودکار وزن");
-    private readonly CheckBox _upArrow = Check("خواندن وزن با کلید جهت بالا ↑");
-    private readonly CheckBox _showRaw = Check("نمایش متن خام دریافتی از ترازو در وضعیت اتصال");
-    private readonly CheckBox _sendQuery = Check("هنگام ↑ فرمان درخواست وزن برای ترازو ارسال شود");
+    private readonly CheckBox _receivePrint = Check("دریافت وزن با کلید PRINT روی ترازو");
+    private readonly CheckBox _autoRead = Check("خواندن خودکار وزن");
+    private readonly CheckBox _up = Check("دریافت وزن با کلید ↑ در فیلد وزن");
+    private readonly CheckBox _raw = Check("نمایش متن خام دریافتی");
+    private readonly CheckBox _sendQuery = Check("هنگام ↑ فرمان درخواست وزن ارسال شود");
     private readonly TextBox _query = Input();
     private readonly ComboBox _ending = Combo();
     private readonly NumericUpDown _timeout = Number(500, 10000);
-    private readonly Label _status = new();
+    private readonly Label _testStatus = LabelX("آماده تست", 9.5f, Muted, true);
 
     public AppSettings ResultSettings { get; private set; }
 
     public SettingsForm(AppSettings settings)
     {
-        _settings = settings;
+        _source = settings;
         ResultSettings = settings;
-        Text = "تنظیمات Gold Bar";
-        Width = 900;
-        Height = 820;
-        MinimumSize = new Size(760, 620);
+        Text = "Gold Bar — Settings";
+        Size = new Size(1080, 760);
+        MinimumSize = new Size(920, 650);
         StartPosition = FormStartPosition.CenterParent;
         BackColor = Bg;
         ForeColor = TextMain;
@@ -53,182 +59,161 @@ public sealed class SettingsForm : Form
         RightToLeftLayout = true;
         AutoScaleMode = AutoScaleMode.Dpi;
 
-        BuildUi();
+        BuildShell();
+        PopulateOptions();
         LoadValues();
+        ShowReport();
     }
 
-    private void BuildUi()
+    private void BuildShell()
     {
-        var root = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            BackColor = Bg,
-            ColumnCount = 1,
-            RowCount = 3,
-            Padding = new Padding(16)
-        };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Bg, ColumnCount = 2, RowCount = 2 };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
-
-        var title = new Label
-        {
-            Text = "تنظیمات",
-            Dock = DockStyle.Fill,
-            ForeColor = TextMain,
-            Font = new Font("Segoe UI", 20f, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleRight
-        };
-        root.Controls.Add(title, 0, 0);
-
-        var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Bg };
-        var stack = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            BackColor = Bg,
-            Padding = new Padding(0, 0, 8, 20),
-            RightToLeft = RightToLeft.Yes
-        };
-        stack.SizeChanged += (_, _) =>
-        {
-            foreach (Control c in stack.Controls) c.Width = Math.Max(600, scroll.ClientSize.Width - 30);
-        };
-
-        stack.Controls.Add(BuildReportCard());
-        stack.Controls.Add(BuildScaleCard());
-        scroll.Controls.Add(stack);
-        root.Controls.Add(scroll, 0, 1);
-
-        var actions = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            BackColor = Bg,
-            Padding = new Padding(0, 8, 0, 0)
-        };
-        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-
-        var cancel = Button("انصراف", false);
-        cancel.DialogResult = DialogResult.Cancel;
-        var save = Button("ذخیره تنظیمات", true);
-        save.Click += (_, _) => SaveAndClose();
-        actions.Controls.Add(cancel, 0, 0);
-        actions.Controls.Add(save, 1, 0);
-        root.Controls.Add(actions, 0, 2);
-
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 74));
+        root.Controls.Add(_page, 0, 0);
+        root.Controls.Add(BuildNav(), 1, 0);
+        var bottom = BuildBottom();
+        root.Controls.Add(bottom, 0, 1);
+        root.SetColumnSpan(bottom, 2);
         Controls.Add(root);
-        CancelButton = cancel;
     }
 
-    private Control BuildReportCard()
+    private Control BuildNav()
     {
-        var card = CardPanel("گزارش");
-        Hint(card, "مسیر را فقط یک‌بار انتخاب کن؛ از این به بعد دکمه «ذخیره گزارش» فایل را مستقیم در همین پوشه ذخیره می‌کند.");
+        var nav = new Panel { Dock = DockStyle.Fill, BackColor = Panel, Padding = new Padding(14, 20, 14, 20) };
+        var title = LabelX("تنظیمات", 18, TextMain, true);
+        title.Dock = DockStyle.Top;
+        title.Height = 54;
+        title.TextAlign = ContentAlignment.MiddleRight;
+        nav.Controls.Add(title);
 
-        var row = new TableLayoutPanel { Dock = DockStyle.Top, Height = 48, ColumnCount = 2, BackColor = Card };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 78));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22));
+        var host = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 150, FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = Panel, Padding = new Padding(0, 58, 0, 0) };
+        _navReport.Width = 190;
+        _navScale.Width = 190;
+        _navReport.Click += (_, _) => ShowReport();
+        _navScale.Click += (_, _) => ShowScale();
+        host.Controls.Add(_navReport);
+        host.Controls.Add(_navScale);
+        nav.Controls.Add(host);
+        return nav;
+    }
+
+    private Control BuildBottom()
+    {
+        var p = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = Panel, ColumnCount = 3, Padding = new Padding(18, 12, 18, 12) };
+        p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        p.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        p.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
+        var hint = LabelX("تنظیمات روی همین ویندوز ذخیره می‌شوند.", 9, Muted, false);
+        hint.Dock = DockStyle.Fill;
+        hint.TextAlign = ContentAlignment.MiddleRight;
+        var cancel = Secondary("انصراف");
+        cancel.DialogResult = DialogResult.Cancel;
+        cancel.Dock = DockStyle.Fill;
+        var save = Primary("ذخیره تنظیمات");
+        save.Dock = DockStyle.Fill;
+        save.Click += (_, _) => SaveAndClose();
+        p.Controls.Add(hint, 0, 0);
+        p.Controls.Add(cancel, 1, 0);
+        p.Controls.Add(save, 2, 0);
+        CancelButton = cancel;
+        return p;
+    }
+
+    private void ShowReport()
+    {
+        SetNav(_navReport);
+        _page.Controls.Clear();
+        var host = ContentHost("گزارش", "مسیر ذخیره گزارش را یک‌بار انتخاب کن. ذخیره تنظیمات فقط مسیر را ثبت می‌کند.");
+        var card = Section("محل ذخیره گزارش");
+        var row = new TableLayoutPanel { Dock = DockStyle.Top, Height = 54, ColumnCount = 2, BackColor = Card };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 76));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 24));
         _reportFolder.Dock = DockStyle.Fill;
-        var browse = Button("انتخاب پوشه…", false);
+        var browse = Secondary("انتخاب پوشه…");
         browse.Dock = DockStyle.Fill;
         browse.Click += (_, _) =>
         {
-            using var dlg = new FolderBrowserDialog
-            {
-                Description = "پوشه ذخیره گزارش‌های Gold Bar را انتخاب کن",
-                SelectedPath = Directory.Exists(_reportFolder.Text) ? _reportFolder.Text : string.Empty,
-                UseDescriptionForTitle = true
-            };
+            using var dlg = new FolderBrowserDialog { Description = "پوشه ذخیره گزارش‌های Gold Bar را انتخاب کن", UseDescriptionForTitle = true };
+            if (Directory.Exists(_reportFolder.Text)) dlg.SelectedPath = _reportFolder.Text;
             if (dlg.ShowDialog(this) == DialogResult.OK) _reportFolder.Text = dlg.SelectedPath;
         };
         row.Controls.Add(_reportFolder, 0, 0);
         row.Controls.Add(browse, 1, 0);
         card.Controls.Add(row);
-        return card;
+        var note = LabelX("برخلاف نسخه قبلی، با زدن «ذخیره تنظیمات» برنامه دیگر تلاش نمی‌کند پوشه گزارش را همان لحظه ایجاد کند. دسترسی به پوشه فقط هنگام ذخیره گزارش بررسی می‌شود.", 9, Muted, false);
+        note.Dock = DockStyle.Top;
+        note.Height = 60;
+        card.Controls.Add(note);
+        host.Controls.Add(card);
+        _page.Controls.Add(host);
     }
 
-    private Control BuildScaleCard()
+    private void ShowScale()
     {
-        var card = CardPanel("تنظیمات ترازو / RS-232");
-        Hint(card, "پیش‌فرض A&D مطابق تصویر مرجع: COM1، 2400، 7 Data Bits، Even Parity، 2 Stop Bits و Flow Control=None.");
+        SetNav(_navScale);
+        _page.Controls.Clear();
+        var host = ContentHost("ترازو / RS-232", "پارامترهای ارتباط سریال ترازو را تنظیم کن. پیش‌فرض A&D مطابق تصویر مرجع است.");
 
-        _model.Items.AddRange(new object[] { "A&D", "Custom / Generic" });
-        var ports = SerialPort.GetPortNames().OrderBy(x => x).Cast<object>().ToArray();
-        if (ports.Length > 0) _port.Items.AddRange(ports);
-        if (!_port.Items.Contains("COM1")) _port.Items.Add("COM1");
-        _baud.Items.AddRange(new object[] { "1200", "2400", "4800", "9600", "19200", "38400", "57600", "115200" });
-        _dataBits.Items.AddRange(new object[] { "7", "8" });
-        _parity.Items.AddRange(Enum.GetNames<Parity>());
-        _stopBits.Items.AddRange(new object[] { nameof(StopBits.One), nameof(StopBits.OnePointFive), nameof(StopBits.Two) });
-        _handshake.Items.AddRange(Enum.GetNames<Handshake>());
-        _ending.Items.AddRange(new object[] { "CRLF", "CR", "LF", "None" });
+        var connection = Section("ارتباط سریال");
+        connection.Controls.Add(FieldGrid(
+            ("مدل ترازو", _model), ("Port", _port), ("Baud Rate", _baud), ("Data Bits", _dataBits),
+            ("Parity", _parity), ("Stop Bits", _stopBits), ("Flow Control", _flow)));
+        host.Controls.Add(connection);
 
-        AddFields(card,
-            ("مدل ترازو", _model), ("Port", _port), ("Baud Rate", _baud),
-            ("Data Bits", _dataBits), ("Parity", _parity), ("Stop Bits", _stopBits), ("Flow Control", _handshake));
+        var format = Section("قالب وزن دریافتی");
+        format.Controls.Add(FieldGrid(("ممیز", _decimal), ("قبل ممیز", _before), ("بعد ممیز", _after), ("حداقل بعد ممیز", _minAfter)));
+        host.Controls.Add(format);
 
-        AddFields(card,
-            ("ممیز", _decimal), ("قبل ممیز", _before), ("بعد ممیز", _after), ("حداقل بعد ممیز", _minAfter));
-
-        card.Controls.Add(_receivePrint);
-        card.Controls.Add(_autoRead);
-        card.Controls.Add(_upArrow);
-        card.Controls.Add(_showRaw);
-        card.Controls.Add(_sendQuery);
-
-        AddFields(card,
-            ("فرمان درخواست وزن", _query), ("پایان فرمان", _ending), ("مهلت دریافت (ms)", _timeout));
-
-        _status.Text = "● آماده تست";
-        _status.ForeColor = Muted;
-        _status.AutoSize = true;
-        _status.Padding = new Padding(4, 10, 4, 10);
-        card.Controls.Add(_status);
-
-        var test = Button("تست اتصال و دریافت وزن", false);
-        test.Height = 44;
+        var behavior = Section("رفتار دریافت");
+        behavior.Controls.Add(_receivePrint);
+        behavior.Controls.Add(_autoRead);
+        behavior.Controls.Add(_up);
+        behavior.Controls.Add(_raw);
+        behavior.Controls.Add(_sendQuery);
+        behavior.Controls.Add(FieldGrid(("فرمان درخواست وزن", _query), ("پایان فرمان", _ending), ("مهلت دریافت (ms)", _timeout)));
+        _testStatus.Dock = DockStyle.Top;
+        _testStatus.Height = 36;
+        behavior.Controls.Add(_testStatus);
+        var test = Secondary("تست اتصال و دریافت وزن");
         test.Dock = DockStyle.Top;
-        test.Click += async (_, _) => await TestScaleAsync(test);
-        card.Controls.Add(test);
-        return card;
+        test.Height = 46;
+        test.Click += async (_, _) => await TestScale(test);
+        behavior.Controls.Add(test);
+        host.Controls.Add(behavior);
+        _page.Controls.Add(host);
     }
 
-    private async Task TestScaleAsync(Button button)
+    private async Task TestScale(Button button)
     {
         button.Enabled = false;
-        _status.Text = "● در حال اتصال…";
-        _status.ForeColor = Gold;
+        _testStatus.Text = "در حال اتصال…";
+        _testStatus.ForeColor = Gold;
         using var reader = new ScaleReader();
         try
         {
-            var temp = BuildFromControls();
-            string raw = string.Empty;
-            reader.RawReceived += s => raw += s;
-            reader.ApplySettings(temp, false);
+            var cfg = BuildSettings();
+            reader.ApplySettings(cfg, false);
             reader.Start();
-            _status.Text = $"● اتصال برقرار شد: {temp.PortName} — منتظر وزن…";
-            _status.ForeColor = Gold;
+            _testStatus.Text = $"پورت {cfg.PortName} باز شد؛ منتظر وزن…";
             try
             {
-                var weight = await reader.ReadNowAsync();
-                _status.Text = "● وزن دریافتی: " + weight.ToString("0.###") + " g" +
-                               (temp.ShowRawText && raw.Length > 0 ? "   |   " + raw.Trim() : string.Empty);
-                _status.ForeColor = Color.FromArgb(102, 220, 150);
+                var w = await reader.ReadNowAsync();
+                _testStatus.Text = "وزن دریافتی: " + w.ToString("0.###") + " g";
+                _testStatus.ForeColor = Success;
             }
             catch (TimeoutException)
             {
-                _status.Text = "● پورت باز شد، اما در مهلت تعیین‌شده وزن دریافت نشد.";
-                _status.ForeColor = Gold;
+                _testStatus.Text = "پورت باز شد ولی وزن در مهلت تعیین‌شده دریافت نشد.";
+                _testStatus.ForeColor = Gold;
             }
         }
         catch (Exception ex)
         {
-            _status.Text = "● خطا: " + ex.Message;
-            _status.ForeColor = Danger;
+            _testStatus.Text = "خطا: " + ex.Message;
+            _testStatus.ForeColor = Danger;
         }
         finally
         {
@@ -236,65 +221,17 @@ public sealed class SettingsForm : Form
         }
     }
 
-    private void LoadValues()
-    {
-        _reportFolder.Text = _settings.ReportFolder;
-        Select(_model, _settings.ScaleModel);
-        Select(_port, _settings.PortName);
-        Select(_baud, _settings.BaudRate.ToString());
-        Select(_dataBits, _settings.DataBits.ToString());
-        Select(_parity, _settings.Parity);
-        Select(_stopBits, _settings.StopBits);
-        Select(_handshake, _settings.Handshake);
-        _decimal.Text = _settings.DecimalSeparator;
-        _before.Value = Math.Clamp(_settings.CharactersBeforeDecimal, (int)_before.Minimum, (int)_before.Maximum);
-        _after.Value = Math.Clamp(_settings.CharactersAfterDecimal, (int)_after.Minimum, (int)_after.Maximum);
-        _minAfter.Value = Math.Clamp(_settings.MinimumAfterDecimal, (int)_minAfter.Minimum, (int)_minAfter.Maximum);
-        _receivePrint.Checked = _settings.ReceivePrintKey;
-        _autoRead.Checked = _settings.AutoRead;
-        _upArrow.Checked = _settings.ReadOnUpArrow;
-        _showRaw.Checked = _settings.ShowRawText;
-        _sendQuery.Checked = _settings.SendQueryOnUpArrow;
-        _query.Text = _settings.QueryCommand;
-        Select(_ending, _settings.QueryLineEnding);
-        _timeout.Value = Math.Clamp(_settings.ReadTimeoutMs, (int)_timeout.Minimum, (int)_timeout.Maximum);
-    }
-
-    private AppSettings BuildFromControls() => new()
-    {
-        ReportFolder = _reportFolder.Text.Trim(),
-        ScaleModel = _model.Text.Trim().Length == 0 ? "A&D" : _model.Text.Trim(),
-        PortName = _port.Text.Trim().Length == 0 ? "COM1" : _port.Text.Trim(),
-        BaudRate = int.TryParse(_baud.Text, out var baud) ? baud : 2400,
-        DataBits = int.TryParse(_dataBits.Text, out var bits) ? bits : 7,
-        Parity = _parity.Text.Trim().Length == 0 ? nameof(System.IO.Ports.Parity.Even) : _parity.Text,
-        StopBits = _stopBits.Text.Trim().Length == 0 ? nameof(System.IO.Ports.StopBits.Two) : _stopBits.Text,
-        Handshake = _handshake.Text.Trim().Length == 0 ? nameof(System.IO.Ports.Handshake.None) : _handshake.Text,
-        DecimalSeparator = string.IsNullOrEmpty(_decimal.Text) ? "." : _decimal.Text,
-        CharactersBeforeDecimal = (int)_before.Value,
-        CharactersAfterDecimal = (int)_after.Value,
-        MinimumAfterDecimal = (int)_minAfter.Value,
-        ReceivePrintKey = _receivePrint.Checked,
-        AutoRead = _autoRead.Checked,
-        ReadOnUpArrow = _upArrow.Checked,
-        ShowRawText = _showRaw.Checked,
-        SendQueryOnUpArrow = _sendQuery.Checked,
-        QueryCommand = _query.Text,
-        QueryLineEnding = _ending.Text.Length == 0 ? "CRLF" : _ending.Text,
-        ReadTimeoutMs = (int)_timeout.Value
-    };
-
     private void SaveAndClose()
     {
-        var next = BuildFromControls();
+        var next = BuildSettings();
         if (string.IsNullOrWhiteSpace(next.ReportFolder))
         {
-            MessageBox.Show(this, "مسیر ذخیره گزارش را انتخاب کن.", "مسیر گزارش", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(this, "یک مسیر برای گزارش انتخاب کن.", "مسیر گزارش", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ShowReport();
             return;
         }
         try
         {
-            Directory.CreateDirectory(next.ReportFolder);
             next.Save();
             ResultSettings = next;
             DialogResult = DialogResult.OK;
@@ -302,127 +239,140 @@ public sealed class SettingsForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "ذخیره تنظیمات انجام نشد:\n" + ex.Message, "خطا", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, "ذخیره فایل تنظیمات انجام نشد:\n" + ex.Message, "خطا", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
-    private static TableLayoutPanel CardPanel(string title)
+    private AppSettings BuildSettings() => new()
     {
-        var p = new TableLayoutPanel
+        ReportFolder = _reportFolder.Text.Trim(),
+        ScaleModel = string.IsNullOrWhiteSpace(_model.Text) ? "A&D" : _model.Text.Trim(),
+        PortName = string.IsNullOrWhiteSpace(_port.Text) ? "COM1" : _port.Text.Trim(),
+        BaudRate = int.TryParse(_baud.Text, out var baud) ? baud : 2400,
+        DataBits = int.TryParse(_dataBits.Text, out var bits) ? bits : 7,
+        Parity = string.IsNullOrWhiteSpace(_parity.Text) ? nameof(Parity.Even) : _parity.Text,
+        StopBits = string.IsNullOrWhiteSpace(_stopBits.Text) ? nameof(StopBits.Two) : _stopBits.Text,
+        Handshake = string.IsNullOrWhiteSpace(_flow.Text) ? nameof(Handshake.None) : _flow.Text,
+        DecimalSeparator = string.IsNullOrEmpty(_decimal.Text) ? "." : _decimal.Text,
+        CharactersBeforeDecimal = (int)_before.Value,
+        CharactersAfterDecimal = (int)_after.Value,
+        MinimumAfterDecimal = (int)_minAfter.Value,
+        ReceivePrintKey = _receivePrint.Checked,
+        AutoRead = _autoRead.Checked,
+        ReadOnUpArrow = _up.Checked,
+        ShowRawText = _raw.Checked,
+        SendQueryOnUpArrow = _sendQuery.Checked,
+        QueryCommand = _query.Text,
+        QueryLineEnding = string.IsNullOrWhiteSpace(_ending.Text) ? "CRLF" : _ending.Text,
+        ReadTimeoutMs = (int)_timeout.Value
+    };
+
+    private void PopulateOptions()
+    {
+        _model.Items.AddRange(new object[] { "A&D", "Custom / Generic" });
+        var ports = SerialPort.GetPortNames().OrderBy(x => x).ToArray();
+        _port.Items.AddRange(ports);
+        if (!_port.Items.Contains("COM1")) _port.Items.Add("COM1");
+        _baud.Items.AddRange(new object[] { "1200", "2400", "4800", "9600", "19200", "38400", "57600", "115200" });
+        _dataBits.Items.AddRange(new object[] { "7", "8" });
+        _parity.Items.AddRange(Enum.GetNames<Parity>());
+        _stopBits.Items.AddRange(new object[] { nameof(StopBits.One), nameof(StopBits.OnePointFive), nameof(StopBits.Two) });
+        _flow.Items.AddRange(Enum.GetNames<Handshake>());
+        _ending.Items.AddRange(new object[] { "CRLF", "CR", "LF", "None" });
+    }
+
+    private void LoadValues()
+    {
+        _reportFolder.Text = _source.ReportFolder;
+        Select(_model, _source.ScaleModel);
+        Select(_port, _source.PortName);
+        Select(_baud, _source.BaudRate.ToString());
+        Select(_dataBits, _source.DataBits.ToString());
+        Select(_parity, _source.Parity);
+        Select(_stopBits, _source.StopBits);
+        Select(_flow, _source.Handshake);
+        _decimal.Text = _source.DecimalSeparator;
+        _before.Value = Math.Clamp(_source.CharactersBeforeDecimal, (int)_before.Minimum, (int)_before.Maximum);
+        _after.Value = Math.Clamp(_source.CharactersAfterDecimal, (int)_after.Minimum, (int)_after.Maximum);
+        _minAfter.Value = Math.Clamp(_source.MinimumAfterDecimal, (int)_minAfter.Minimum, (int)_minAfter.Maximum);
+        _receivePrint.Checked = _source.ReceivePrintKey;
+        _autoRead.Checked = _source.AutoRead;
+        _up.Checked = _source.ReadOnUpArrow;
+        _raw.Checked = _source.ShowRawText;
+        _sendQuery.Checked = _source.SendQueryOnUpArrow;
+        _query.Text = _source.QueryCommand;
+        Select(_ending, _source.QueryLineEnding);
+        _timeout.Value = Math.Clamp(_source.ReadTimeoutMs, (int)_timeout.Minimum, (int)_timeout.Maximum);
+    }
+
+    private void SetNav(Button active)
+    {
+        foreach (var b in new[] { _navReport, _navScale })
         {
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 1,
-            BackColor = Card,
-            ForeColor = TextMain,
-            Padding = new Padding(16),
-            Margin = new Padding(0, 8, 0, 8)
+            b.BackColor = b == active ? Card2 : Panel;
+            b.ForeColor = b == active ? Gold : Muted;
+        }
+    }
+
+    private static FlowLayoutPanel ContentHost(string title, string subtitle)
+    {
+        var h = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = Bg, Padding = new Padding(28, 22, 28, 24), RightToLeft = RightToLeft.Yes };
+        var t = LabelX(title, 21, TextMain, true);
+        t.Margin = new Padding(0, 0, 0, 3);
+        h.Controls.Add(t);
+        var s = LabelX(subtitle, 9.5f, Muted, false);
+        s.Margin = new Padding(0, 0, 0, 16);
+        h.Controls.Add(s);
+        h.SizeChanged += (_, _) =>
+        {
+            foreach (Control c in h.Controls)
+                if (c is RoundedPanel) c.Width = Math.Max(600, h.ClientSize.Width - 64);
         };
-        p.Controls.Add(new Label
-        {
-            Text = title,
-            ForeColor = TextMain,
-            Font = new Font("Segoe UI", 13f, FontStyle.Bold),
-            AutoSize = true,
-            Padding = new Padding(0, 0, 0, 8)
-        });
+        return h;
+    }
+
+    private static RoundedPanel Section(string title)
+    {
+        var p = new RoundedPanel { Width = 760, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, BackColor = Card, BorderColor = Border, Radius = 17, Padding = new Padding(16), Margin = new Padding(0, 0, 0, 14) };
+        var t = LabelX(title, 13, TextMain, true);
+        t.Dock = DockStyle.Top;
+        t.Height = 34;
+        p.Controls.Add(t);
         return p;
     }
 
-    private static void Hint(TableLayoutPanel card, string text) => card.Controls.Add(new Label
-    {
-        Text = text,
-        ForeColor = Muted,
-        AutoSize = true,
-        MaximumSize = new Size(820, 0),
-        Padding = new Padding(0, 0, 0, 10)
-    });
-
-    private static void AddFields(TableLayoutPanel card, params (string Label, Control Control)[] fields)
+    private static TableLayoutPanel FieldGrid(params (string Label, Control C)[] fields)
     {
         var cols = Math.Min(4, Math.Max(1, fields.Length));
-        var row = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = cols,
-            BackColor = Card,
-            RightToLeft = RightToLeft.Yes,
-            Margin = new Padding(0, 2, 0, 8)
-        };
-        for (var i = 0; i < cols; i++) row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / cols));
+        var g = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = cols, BackColor = Card, RightToLeft = RightToLeft.Yes, Margin = new Padding(0, 4, 0, 10) };
+        for (int i = 0; i < cols; i++) g.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / cols));
         foreach (var f in fields)
         {
-            var host = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, BackColor = Card, Padding = new Padding(4), ColumnCount = 1 };
-            host.Controls.Add(new Label { Text = f.Label, ForeColor = Muted, AutoSize = true, Padding = new Padding(0, 0, 0, 4) });
-            f.Control.Dock = DockStyle.Top;
-            host.Controls.Add(f.Control);
-            row.Controls.Add(host);
+            var host = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, BackColor = Card, Margin = new Padding(5) };
+            var l = LabelX(f.Label, 8.7f, Muted, false);
+            l.Dock = DockStyle.Top;
+            l.Height = 24;
+            host.Controls.Add(l);
+            f.C.Dock = DockStyle.Top;
+            host.Controls.Add(f.C);
+            g.Controls.Add(host);
         }
-        card.Controls.Add(row);
+        return g;
     }
 
-    private static TextBox Input() => new()
+    private static TextBox Input() => new() { BackColor = Card2, ForeColor = TextMain, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Segoe UI", 10.5f), RightToLeft = RightToLeft.No, Height = 36 };
+    private static ComboBox Combo() => new() { BackColor = Card2, ForeColor = TextMain, FlatStyle = FlatStyle.Flat, DropDownStyle = ComboBoxStyle.DropDown, Font = new Font("Segoe UI", 10f), RightToLeft = RightToLeft.No, Height = 36 };
+    private static NumericUpDown Number(int min, int max) => new() { Minimum = min, Maximum = max, BackColor = Card2, ForeColor = TextMain, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Segoe UI", 10f), TextAlign = HorizontalAlignment.Center, Height = 36 };
+    private static CheckBox Check(string text) => new() { Text = text, ForeColor = TextMain, AutoSize = true, Padding = new Padding(4, 7, 4, 7), Font = new Font("Segoe UI", 9.5f) };
+    private static Button Nav(string text) { var b = Secondary(text); b.Height = 48; b.TextAlign = ContentAlignment.MiddleRight; return b; }
+    private static Button Primary(string text) => ButtonX(text, Gold, Color.FromArgb(22, 16, 3));
+    private static Button Secondary(string text) => ButtonX(text, Card2, Gold);
+    private static Button ButtonX(string text, Color bg, Color fg)
     {
-        BackColor = Card2,
-        ForeColor = TextMain,
-        BorderStyle = BorderStyle.FixedSingle,
-        Font = new Font("Segoe UI", 10.5f),
-        Height = 34,
-        RightToLeft = RightToLeft.No
-    };
-
-    private static ComboBox Combo() => new()
-    {
-        BackColor = Card2,
-        ForeColor = TextMain,
-        FlatStyle = FlatStyle.Flat,
-        DropDownStyle = ComboBoxStyle.DropDown,
-        Font = new Font("Segoe UI", 10f),
-        Height = 34,
-        RightToLeft = RightToLeft.No
-    };
-
-    private static NumericUpDown Number(int min, int max) => new()
-    {
-        Minimum = min,
-        Maximum = max,
-        BackColor = Card2,
-        ForeColor = TextMain,
-        BorderStyle = BorderStyle.FixedSingle,
-        Font = new Font("Segoe UI", 10f),
-        Height = 34,
-        TextAlign = HorizontalAlignment.Center
-    };
-
-    private static CheckBox Check(string text) => new()
-    {
-        Text = text,
-        ForeColor = TextMain,
-        AutoSize = true,
-        Padding = new Padding(4, 5, 4, 5)
-    };
-
-    private static Button Button(string text, bool filled)
-    {
-        var b = new Button
-        {
-            Text = text,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = filled ? Gold : Card2,
-            ForeColor = filled ? Color.FromArgb(22, 16, 3) : Gold,
-            Font = new Font("Segoe UI", 10f, FontStyle.Bold),
-            Cursor = Cursors.Hand,
-            Margin = new Padding(5)
-        };
-        b.FlatAppearance.BorderColor = filled ? Gold : Color.FromArgb(60, 63, 71);
+        var b = new Button { Text = text, FlatStyle = FlatStyle.Flat, BackColor = bg, ForeColor = fg, Font = new Font("Segoe UI", 10f, FontStyle.Bold), Cursor = Cursors.Hand, Margin = new Padding(4) };
+        b.FlatAppearance.BorderColor = bg == Gold ? Gold : Border;
         return b;
     }
-
-    private static void Select(ComboBox combo, string value)
-    {
-        var index = combo.FindStringExact(value);
-        if (index >= 0) combo.SelectedIndex = index;
-        else combo.Text = value;
-    }
+    private static Label LabelX(string text, float size, Color color, bool bold) => new() { Text = text, ForeColor = color, AutoSize = true, Font = new Font("Segoe UI", size, bold ? FontStyle.Bold : FontStyle.Regular), RightToLeft = RightToLeft.Yes };
+    private static void Select(ComboBox c, string value) { var i = c.FindStringExact(value); if (i >= 0) c.SelectedIndex = i; else c.Text = value; }
 }
