@@ -1,0 +1,201 @@
+name: Build Python CSS Windows installer
+
+on:
+  push:
+    branches: [ feature/windows-python-css-v160 ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: goldbar-python-css-v160-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  python-css-windows:
+    runs-on: windows-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: windows/GoldBar.Python/requirements.txt
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r windows/GoldBar.Python/requirements.txt
+          pip install pillow
+
+      - name: Generate icon and splash
+        run: python windows/GoldBar.Python/generate_assets.py
+
+      - name: Verify CSS reference implementation
+        shell: pwsh
+        run: |
+          $html = Get-Content windows/GoldBar.Python/web/index.html -Raw
+          $css = Get-Content windows/GoldBar.Python/web/style.css -Raw
+          $py = Get-Content windows/GoldBar.Python/app.py -Raw
+          if ($html -notmatch 'ثبت سریع آبشده') { throw 'Quick registration card missing' }
+          if ($html -notmatch 'خواندن از ترازو') { throw 'Scale read button missing' }
+          if ($html -notmatch 'کل بار مورد نیاز') { throw 'Total alloy metric missing' }
+          if ($css -notmatch '\.quick-register') { throw 'Quick register CSS missing' }
+          if ($css -notmatch 'linear-gradient') { throw 'Graphical CSS gradients missing' }
+          if ($css -notmatch 'box-shadow') { throw 'Graphical CSS shadows missing' }
+          if ($py -notmatch 'PySide6') { throw 'Python Qt shell missing' }
+          if ($py -notmatch 'serial\.Serial') { throw 'Python serial scale reader missing' }
+          if ($py -notmatch 'AutoRead.*False') { throw 'AutoRead must default off' }
+
+      - name: Apply packaging safety patches
+        shell: pwsh
+        run: |
+          $p = 'windows/GoldBar.Python/app.py'
+          $text = Get-Content $p -Raw
+          $text = $text.Replace('allow_nan=False, default=lambda _: None','allow_nan=True')
+          $text = $text.Replace('allow_nan=False','allow_nan=True')
+          $text = $text.Replace('from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot','from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot, Qt')
+          $text = $text.Replace('from PySide6.QtGui import QDesktopServices, QIcon','from PySide6.QtGui import QDesktopServices, QIcon, QColor')
+          $text = $text.Replace('splash.showMessage("در حال بارگذاری…", 0x0084 | 0x0004, 0xFFF1C1)  # AlignCenter | AlignBottom','splash.showMessage("در حال بارگذاری…", Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom, QColor("#fff1c1"))')
+          Set-Content -Path $p -Value $text -Encoding utf8
+
+          $j = 'windows/GoldBar.Python/web/app.js'
+          $js = Get-Content $j -Raw
+          $js = $js.Replace('JSON.parse(raw)',"JSON.parse(String(raw).replaceAll('NaN','null'))")
+          Set-Content -Path $j -Value $js -Encoding utf8
+
+          $c = 'windows/GoldBar.Python/web/style.css'
+          Add-Content -Path $c -Value "`n/* enforced desktop direction: sidebar stays on the left, Persian content remains RTL */`n.app-shell{direction:ltr!important}.sidebar,.main-area{direction:rtl!important}" -Encoding utf8
+
+      - name: Verify calculation logic in Python
+        shell: pwsh
+        run: |
+          $env:GOLDBAR_PY_SELFTEST='1'
+          python windows/GoldBar.Python/app.py
+          if ($LASTEXITCODE -ne 0) { throw 'Python calculation selftest failed' }
+          Remove-Item Env:GOLDBAR_PY_SELFTEST
+
+      - name: Build installed application folder
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force build/python-installed,build/pyi-work,build/pyi-spec -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force build/python-installed | Out-Null
+          pyinstaller --noconfirm --clean --windowed `
+            --name GoldBar `
+            --icon windows/GoldBar.Python/AppIcon.ico `
+            --add-data "windows/GoldBar.Python/web;web" `
+            --add-data "windows/GoldBar.Python/AppIcon.ico;." `
+            --collect-all PySide6.QtWebEngineCore `
+            --collect-all PySide6.QtWebEngineWidgets `
+            --distpath build/python-installed `
+            --workpath build/pyi-work `
+            --specpath build/pyi-spec `
+            windows/GoldBar.Python/app.py
+          if (!(Test-Path build/python-installed/GoldBar/GoldBar.exe)) { throw 'Python GoldBar.exe not produced' }
+
+      - name: Verify executable icon
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $exe=(Resolve-Path build/python-installed/GoldBar/GoldBar.exe).Path
+          $icon=[System.Drawing.Icon]::ExtractAssociatedIcon($exe)
+          if ($null -eq $icon) { throw 'No embedded icon' }
+          $icon.Dispose()
+
+      - name: Install Inno Setup compiler
+        shell: pwsh
+        run: |
+          $iscc='C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $iscc)) { choco install innosetup --no-progress -y }
+          if (!(Test-Path $iscc)) { throw 'Inno Setup compiler unavailable' }
+
+      - name: Build v1.6.0 installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/python-installer | Out-Null
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' windows/GoldBar.Python/installer/GoldBar.iss
+          if (!(Test-Path build/python-installer/GoldBar-Setup-v1.6.0.exe)) { throw 'Installer not produced' }
+
+      - name: Silent install and real UI screenshot
+        shell: pwsh
+        run: |
+          $setup=(Resolve-Path build/python-installer/GoldBar-Setup-v1.6.0.exe).Path
+          $testDir=Join-Path $env:TEMP 'GoldBar-PythonCSS-v160'
+          Remove-Item -Recurse -Force $testDir -ErrorAction SilentlyContinue
+          $install=Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$testDir+'"') -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer failed: $($install.ExitCode)" }
+          $exe=Join-Path $testDir 'GoldBar.exe'
+          if (!(Test-Path $exe)) { throw 'Installed executable missing' }
+          $shot=(Join-Path (Resolve-Path build).Path 'python-css-dashboard.png')
+          Remove-Item $shot -Force -ErrorAction SilentlyContinue
+          $env:GOLDBAR_UI_SCREENSHOT=$shot
+          $env:GOLDBAR_SCREENSHOT_EXIT='1'
+          $proc=Start-Process -FilePath $exe -PassThru
+          $ok=$false
+          for($i=0;$i -lt 80;$i++){
+            Start-Sleep -Milliseconds 350
+            if(Test-Path $shot){ if((Get-Item $shot).Length -gt 35000){$ok=$true;break} }
+            if($proc.HasExited -and !(Test-Path $shot)){break}
+          }
+          if(!$proc.HasExited){Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue}
+          Remove-Item Env:GOLDBAR_UI_SCREENSHOT -ErrorAction SilentlyContinue
+          Remove-Item Env:GOLDBAR_SCREENSHOT_EXIT -ErrorAction SilentlyContinue
+          if(!$ok){throw 'Real installed UI screenshot test failed'}
+
+      - name: Record metadata
+        shell: pwsh
+        run: |
+          $setup='build/python-installer/GoldBar-Setup-v1.6.0.exe'
+          "Python + HTML/CSS desktop build PASS" | Out-File build/python-css-metadata.txt
+          Get-Item $setup | Format-List Name,Length | Out-File -Append build/python-css-metadata.txt
+          Get-FileHash $setup -Algorithm SHA256 | Format-List | Out-File -Append build/python-css-metadata.txt
+          Get-Content build/python-css-metadata.txt
+
+      - name: Upload Python CSS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoldBar-Python-CSS-Setup-v1.6.0
+          path: build/python-installer/GoldBar-Setup-v1.6.0.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload visual test
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoldBar-Python-CSS-v1.6.0-visual
+          path: |
+            build/python-css-dashboard.png
+            build/python-css-metadata.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Publish latest run pointer
+        if: ${{ always() && github.event_name == 'push' }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .ci | Out-Null
+          @"
+          run_id=${{ github.run_id }}
+          run_attempt=${{ github.run_attempt }}
+          head_sha=${{ github.sha }}
+          conclusion_hint=${{ job.status }}
+          installer_artifact=GoldBar-Python-CSS-Setup-v1.6.0
+          visual_artifact=GoldBar-Python-CSS-v1.6.0-visual
+          "@ | Set-Content .ci/python-css-latest.txt -Encoding utf8
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .ci/python-css-latest.txt
+          if (!(git diff --cached --quiet)) {
+            git commit -m 'Record Python CSS build run [skip ci]'
+            git push origin HEAD:feature/windows-python-css-v160
+          }

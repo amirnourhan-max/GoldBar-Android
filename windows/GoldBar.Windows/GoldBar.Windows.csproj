@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>GoldBar</AssemblyName>
+    <RootNamespace>GoldBar.Windows</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>AppIcon.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Version>1.5.1</Version>
+    <FileVersion>1.5.1.0</FileVersion>
+    <AssemblyVersion>1.5.1.0</AssemblyVersion>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <TieredCompilation>true</TieredCompilation>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="AppSettings.cs" />
+    <Compile Include="ScaleReader.cs" />
+    <Compile Include="StableWeightFilter.cs" />
+    <Compile Include="UiPrimitives.cs" />
+    <Compile Include="ModernMainForm.cs" />
+    <Compile Include="ModernLayoutPolish.cs" />
+    <Compile Include="SettingsDrawerPolish.cs" />
+    <Compile Include="SettingsDrawerLayoutFix.cs" />
+    <Compile Include="MockupFixedLayout.cs" />
+    <Compile Include="ReferenceVisualPolish.cs" />
+    <Compile Include="ModernSplashForm.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GoldBar.Core\GoldBar.Core.csproj" />
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+  </ItemGroup>
+</Project>

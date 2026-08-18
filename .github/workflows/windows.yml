@@ -1,0 +1,207 @@
+name: Build and test Windows installer
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Generate Gold Bar app icon
+        shell: pwsh
+        run: |
+          python -m pip install pillow --disable-pip-version-check -q
+          python windows/GoldBar.Windows/GenerateIcon.py
+          if (!(Test-Path windows/GoldBar.Windows/AppIcon.ico)) { throw 'App icon was not generated' }
+          if ((Get-Item windows/GoldBar.Windows/AppIcon.ico).Length -lt 3000) { throw 'App icon is unexpectedly small' }
+
+      - name: Verify gold calculation logic
+        run: dotnet run --project windows/GoldBar.Verify/GoldBar.Verify.csproj -c Release
+
+      - name: Verify Windows v1.5.1 implementation
+        shell: pwsh
+        run: |
+          if (!(Select-String -Path windows/GoldBar.Windows/ModernMainForm.cs -Pattern 'کل بار مورد نیاز' -Quiet)) { throw 'Total alloy metric missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/ModernMainForm.cs -Pattern 'OpenSettingsDrawer' -Quiet)) { throw 'Integrated settings drawer missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/ModernMainForm.cs -Pattern 'Keys.Up' -Quiet)) { throw 'Up-arrow scale read missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/ModernMainForm.cs -Pattern 'StableSampleCount' -Quiet)) { throw 'Scale stability controls missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/AppSettings.cs -Pattern 'AutoRead.*false' -Quiet)) { throw 'AutoRead default must be off' }
+          if (!(Select-String -Path windows/GoldBar.Windows/ScaleReader.cs -Pattern 'IsStableSeries' -Quiet)) { throw 'Scale stability filter missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/ModernSplashForm.cs -Pattern 'در حال بارگذاری' -Quiet)) { throw 'Loading splash missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/Program.cs -Pattern 'MockupFixedLayout.Attach' -Quiet)) { throw 'Fixed mockup layout is not active' }
+          if (!(Select-String -Path windows/GoldBar.Windows/MockupFixedLayout.cs -Pattern 'IsSplitterFixed = true' -Quiet)) { throw 'Dashboard cards are still resizable' }
+          if (!(Select-String -Path windows/GoldBar.Windows/MockupFixedLayout.cs -Pattern 'Panel2Collapsed = true' -Quiet)) { throw 'Reference full-width registration row missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/SettingsDrawerLayoutFix.cs -Pattern 'SingleColumn' -Quiet)) { throw 'Reference single-column settings layout missing' }
+          if (!(Select-String -Path windows/GoldBar.Windows/GoldBar.Windows.csproj -Pattern '<ApplicationIcon>AppIcon.ico</ApplicationIcon>' -Quiet)) { throw 'Executable icon missing' }
+          if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'GoldBar-Setup-v1.5.1' -Quiet)) { throw 'Installer v1.5.1 definition missing' }
+          if (!(Select-String -Path windows/installer/GoldBar.iss -Pattern 'SetupIconFile' -Quiet)) { throw 'Installer icon missing' }
+
+      - name: Apply compile and startup safety patches
+        shell: pwsh
+        run: |
+          $path = 'windows/GoldBar.Windows/ModernMainForm.cs'
+          $text = Get-Content $path -Raw
+          $text = $text.Replace(
+            'b.Click += (_, _) => key == "settings" ? OpenSettingsDrawer() : ShowPage(key);',
+            'b.Click += (_, _) => { if (key == "settings") OpenSettingsDrawer(); else ShowPage(key); };')
+
+          $text = $text.Replace(
+            'BeginInvoke((Action)ApplySavedSplitters);',
+            '_dashboardMainSplit.HandleCreated += (_, _) => { try { _dashboardMainSplit.BeginInvoke((Action)ApplySavedSplitters); } catch { } };')
+
+          $text = $text.Replace('Panel1MinSize = min1,', 'Panel1MinSize = 80,')
+          $text = $text.Replace('Panel2MinSize = min2,', 'Panel2MinSize = 80,')
+          Set-Content -Path $path -Value $text -Encoding utf8
+
+      - name: Build Windows desktop app
+        run: dotnet build windows/GoldBar.Windows/GoldBar.Windows.csproj -c Release
+
+      - name: Publish fast installed build
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force build/windows-installed -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path build/windows-installed | Out-Null
+          dotnet publish windows/GoldBar.Windows/GoldBar.Windows.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=false `
+            -p:PublishReadyToRun=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -o build/windows-installed
+          if (!(Test-Path build/windows-installed/GoldBar.exe)) { throw 'GoldBar.exe was not produced' }
+
+      - name: Verify executable icon
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $exe = (Resolve-Path build/windows-installed/GoldBar.exe).Path
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exe)
+          if ($null -eq $icon) { throw 'No icon embedded in GoldBar.exe' }
+          $bmp = $icon.ToBitmap()
+          $bmp.Save((Join-Path (Resolve-Path build).Path 'ui-app-icon.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+          $bmp.Dispose(); $icon.Dispose()
+
+      - name: Install Inno Setup compiler
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $iscc)) { choco install innosetup --no-progress -y }
+          if (!(Test-Path $iscc)) { throw 'Inno Setup compiler not available' }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build/installer | Out-Null
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' windows/installer/GoldBar.iss
+          if (!(Test-Path build/installer/GoldBar-Setup-v1.5.1.exe)) { throw 'Installer was not produced' }
+
+      - name: Silent install and complete self test
+        shell: pwsh
+        run: |
+          $setup = (Resolve-Path build/installer/GoldBar-Setup-v1.5.1.exe).Path
+          $testDir = Join-Path $env:TEMP 'GoldBar-v151-Test'
+          Remove-Item -Recurse -Force $testDir -ErrorAction SilentlyContinue
+          $install = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="' + $testDir + '"') -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer failed with code $($install.ExitCode)" }
+          $exe = Join-Path $testDir 'GoldBar.exe'
+          if (!(Test-Path $exe)) { throw 'Installed GoldBar.exe not found' }
+
+          $buildDir = (Resolve-Path build).Path
+          $settingsFile = Join-Path $env:LOCALAPPDATA 'GoldBar\settings.json'
+          Remove-Item $settingsFile -Force -ErrorAction SilentlyContinue
+
+          $env:GOLDBAR_SCALE_SELFTEST = '1'
+          $env:GOLDBAR_SELFTEST_OUT = Join-Path $buildDir 'scale-selftest.txt'
+          $p = Start-Process -FilePath $exe -Wait -PassThru
+          if ($p.ExitCode -ne 0 -or !(Test-Path $env:GOLDBAR_SELFTEST_OUT)) { throw 'Scale stability self test failed' }
+          Remove-Item Env:GOLDBAR_SCALE_SELFTEST -ErrorAction SilentlyContinue
+          Remove-Item Env:GOLDBAR_SELFTEST_OUT -ErrorAction SilentlyContinue
+
+          $env:GOLDBAR_SETTINGS_SELFTEST = '1'
+          $env:GOLDBAR_SELFTEST_OUT = Join-Path $buildDir 'settings-selftest.txt'
+          $p = Start-Process -FilePath $exe -Wait -PassThru
+          if ($p.ExitCode -ne 0 -or !(Test-Path $env:GOLDBAR_SELFTEST_OUT)) { throw 'Settings self test failed' }
+          Remove-Item Env:GOLDBAR_SETTINGS_SELFTEST -ErrorAction SilentlyContinue
+          Remove-Item Env:GOLDBAR_SELFTEST_OUT -ErrorAction SilentlyContinue
+          Remove-Item $settingsFile -Force -ErrorAction SilentlyContinue
+
+          function Capture-GoldBarPage([string]$page, [string]$size, [string]$shot, [int]$minimumBytes) {
+            Remove-Item $shot -Force -ErrorAction SilentlyContinue
+            $env:GOLDBAR_UI_PAGE = $page
+            $env:GOLDBAR_UI_SIZE = $size
+            $env:GOLDBAR_UI_SCREENSHOT = $shot
+            $env:GOLDBAR_SCREENSHOT_EXIT = '1'
+            $proc = Start-Process -FilePath $exe -PassThru
+            $ok = $false
+            for ($i = 0; $i -lt 50; $i++) {
+              Start-Sleep -Milliseconds 300
+              if (Test-Path $shot) {
+                if ((Get-Item $shot).Length -ge $minimumBytes) { $ok = $true; break }
+              }
+              if ($proc.HasExited -and !(Test-Path $shot)) { break }
+            }
+            if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+            if (!$ok) { throw "Visual capture failed for $page at $size (exit=$($proc.HasExited))" }
+          }
+
+          $pages = @('dashboard','entries','calculations','quick','reports','settings')
+          $timer = [System.Diagnostics.Stopwatch]::StartNew()
+          foreach ($page in $pages) {
+            Capture-GoldBarPage $page '1540x900' (Join-Path $buildDir ("ui-" + $page + ".png")) 25000
+          }
+          foreach ($page in @('dashboard','entries','settings')) {
+            Capture-GoldBarPage $page '1180x760' (Join-Path $buildDir ("ui-compact-" + $page + ".png")) 20000
+          }
+          $timer.Stop()
+          "v1.5.1 installer + calculations + settings + scale stability + 9 fixed-layout visual checks PASS in $($timer.ElapsedMilliseconds) ms" | Out-File build/windows-metadata.txt
+
+          Remove-Item Env:GOLDBAR_UI_PAGE -ErrorAction SilentlyContinue
+          Remove-Item Env:GOLDBAR_UI_SIZE -ErrorAction SilentlyContinue
+          Remove-Item Env:GOLDBAR_UI_SCREENSHOT -ErrorAction SilentlyContinue
+          Remove-Item Env:GOLDBAR_SCREENSHOT_EXIT -ErrorAction SilentlyContinue
+
+      - name: Record installer metadata
+        shell: pwsh
+        run: |
+          Get-Item build/installer/GoldBar-Setup-v1.5.1.exe | Format-List Name,Length,VersionInfo | Out-File -Append build/windows-metadata.txt
+          Get-FileHash build/installer/GoldBar-Setup-v1.5.1.exe -Algorithm SHA256 | Format-List | Out-File -Append build/windows-metadata.txt
+          Get-Content build/windows-metadata.txt
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoldBar-Windows-Setup-v1.5.1
+          path: build/installer/GoldBar-Setup-v1.5.1.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload complete visual diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoldBar-Windows-v1.5.1-full-test
+          path: |
+            build/ui-*.png
+            build/*selftest.txt
+            build/windows-metadata.txt
+          if-no-files-found: ignore
+          retention-days: 14

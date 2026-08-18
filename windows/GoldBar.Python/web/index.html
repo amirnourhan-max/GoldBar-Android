@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gold Bar</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <aside class="sidebar">
+      <section class="brand-card">
+        <div class="brand-glow"></div>
+        <svg class="gold-bar" viewBox="0 0 180 150" aria-hidden="true">
+          <defs>
+            <linearGradient id="gTop" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#fff0a6"/><stop offset=".4" stop-color="#ffd85c"/><stop offset="1" stop-color="#b86c05"/>
+            </linearGradient>
+            <linearGradient id="gBody" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#ffe27a"/><stop offset=".52" stop-color="#f5ad18"/><stop offset="1" stop-color="#9b5600"/>
+            </linearGradient>
+            <filter id="glow"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <ellipse cx="90" cy="78" rx="66" ry="50" fill="#eaa312" opacity=".14" filter="url(#glow)"/>
+          <path d="M57 31h63l19 28H39z" fill="url(#gTop)" stroke="#ffe37a" stroke-width="2.4"/>
+          <path d="M39 59h100l-18 67H57z" fill="url(#gBody)" stroke="#ffd75a" stroke-width="2.4"/>
+          <path d="M113 33l17 25-16 65" fill="none" stroke="#fff4c3" stroke-width="3" opacity=".65"/>
+          <text x="90" y="95" text-anchor="middle" font-family="Segoe UI" font-size="31" font-weight="800" fill="#6d3c00" opacity=".65">Au</text>
+          <text x="88" y="92" text-anchor="middle" font-family="Segoe UI" font-size="31" font-weight="800" fill="#fff0a8">Au</text>
+        </svg>
+        <div class="brand-title">GOLD BAR</div>
+        <button class="link-button" id="instagram">by: Amirnourhan</button>
+      </section>
+
+      <nav class="nav-list" id="navList">
+        <button class="nav-item active" data-page="dashboard"><span class="nav-icon">▦</span><span>داشبورد</span></button>
+        <button class="nav-item" data-page="register"><span class="nav-icon">◫</span><span>ثبت آبشده</span></button>
+        <button class="nav-item" data-page="entries"><span class="nav-icon">▤</span><span>آبشده‌ها</span></button>
+        <button class="nav-item" data-page="calculations"><span class="nav-icon">⌘</span><span>محاسبات عیار</span></button>
+        <button class="nav-item" data-page="quick"><span class="nav-icon">⚡</span><span>محاسبه سریع</span></button>
+        <button class="nav-item" data-page="reports"><span class="nav-icon">▧</span><span>گزارش‌ها</span></button>
+        <button class="nav-item" data-page="settings"><span class="nav-icon">⚙</span><span>تنظیمات</span></button>
+      </nav>
+
+      <section class="scale-mini">
+        <div class="scale-mini-head"><span>⚖</span><strong>ترازو</strong><span id="scaleDot" class="status-dot"></span></div>
+        <div class="scale-mini-value"><span id="sidebarWeight">—</span><small>g</small></div>
+        <button class="ghost-btn full" id="sidebarRead">دریافت وزن ↑</button>
+      </section>
+      <footer class="sidebar-footer"><span>GOLD BAR • v<span id="version">1.6.0</span></span><span><i class="status-dot ok"></i> نسخه CSS / Python</span></footer>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="page-identity">
+          <div class="title-row"><span class="page-icon">▦</span><h1 id="pageTitle">داشبورد</h1></div>
+          <p id="pageSubtitle">نمای کلی وزن، عیار و عملیات پرکاربرد</p>
+        </div>
+        <div class="top-actions">
+          <button class="support-btn">☁ <span>پشتیبان‌گیری</span></button>
+          <button class="round-action">♧</button>
+          <button class="round-action">♙</button>
+        </div>
+      </header>
+
+      <div class="content-scroll">
+        <section id="page-dashboard" class="page active-page">
+          <div class="metrics-grid">
+            <article class="metric-card gold-accent"><span class="metric-label">وزن کل (g)</span><strong id="metricWeight">0</strong><span class="metric-orb">⚖</span></article>
+            <article class="metric-card amber-accent"><span class="metric-label">عیار میانگین (‰)</span><strong id="metricAssay">—</strong><span class="metric-orb">✺</span></article>
+            <article class="metric-card purple-accent"><span class="metric-label">تعداد آبشده‌ها</span><strong id="metricCount">0</strong><span class="metric-orb purple">◉</span></article>
+            <article class="metric-card green-accent"><span class="metric-label gold-text">کل بار مورد نیاز (g)</span><strong id="metricAlloy">0</strong><span class="metric-orb green">⚗</span></article>
+          </div>
+
+          <section class="quick-register premium-card" id="quickRegisterCard">
+            <div class="premium-corner"></div>
+            <div class="card-head">
+              <h2>ثبت سریع آبشده</h2>
+              <div class="card-tools"><span>⠿</span><span class="gold-text">✣</span><span>—</span></div>
+            </div>
+            <div class="register-grid">
+              <label class="field-block weight-field">
+                <span>وزن (g)</span>
+                <input id="entryWeight" inputmode="decimal" autocomplete="off" placeholder="0.000" />
+              </label>
+              <button class="scale-read-btn" id="readScale"><span class="scale-bottle">⚗</span><span>خواندن از ترازو</span></button>
+              <label class="field-block assay-field">
+                <span>عیار (‰)</span>
+                <div class="input-wrap"><input id="entryAssay" inputmode="decimal" value="750"/><span class="chevron">⌄</span></div>
+              </label>
+              <div class="scale-hint">● کلید ↑ روی فیلد وزن برای خواندن وزن</div>
+              <label class="field-block note-field">
+                <span>توضیحات</span>
+                <input id="entryNote" placeholder="توضیحات اختیاری..." />
+              </label>
+              <div class="register-actions">
+                <button class="primary-btn" id="saveEntry"><span>ثبت آبشده</span><b>＋</b></button>
+                <button class="ghost-btn" id="resetEntry"><span>ثبت و جدید</span><b>⌖</b></button>
+                <button class="ghost-btn danger-hover" id="clearEntry"><span>پاک کردن</span><b>♜</b></button>
+              </div>
+            </div>
+          </section>
+
+          <div class="dashboard-lower">
+            <section class="info-card">
+              <div class="card-head"><h2>بالا بردن عیار</h2></div>
+              <p class="muted">در صورت نیاز به افزایش عیار با شمش پرعیار</p>
+              <div class="two-inputs">
+                <label class="compact-field"><span>عیار هدف</span><input id="raiseTarget" value="747" /></label>
+                <label class="compact-field"><span>عیار شمش</span><input id="barAssay" value="995" /></label>
+              </div>
+              <div class="mini-metrics"><div><span>اختلاف تا هدف</span><strong id="raiseDiff">—</strong></div><div><span>شمش مورد نیاز (g)</span><strong id="raiseNeed">—</strong></div></div>
+              <div class="state-line" id="raiseState">ابتدا آبشده معتبر ثبت کن.</div>
+            </section>
+
+            <section class="info-card">
+              <div class="card-head"><h2>پایین آوردن عیار</h2></div>
+              <p class="muted">محاسبه بار ریخته‌گری مورد نیاز</p>
+              <div class="two-inputs">
+                <label class="compact-field"><span>عیار هدف</span><input id="lowerTarget" value="746" /></label>
+                <label class="compact-field"><span>درصد نقره</span><input id="silverPercent" value="32" /></label>
+              </div>
+              <div class="mini-metrics"><div><span>کل بار (g)</span><strong id="lowerTotal">—</strong></div><div><span>نقره (g)</span><strong id="lowerSilver">—</strong></div></div>
+              <div class="mini-metrics"><div><span>بار بدون نقره (g)</span><strong id="lowerOther">—</strong></div><div><span>وزن پس از بار (g)</span><strong id="lowerAfter">—</strong></div></div>
+            </section>
+
+            <section class="info-card recent-card">
+              <div class="card-head"><h2>آخرین آبشده‌ها</h2></div>
+              <div id="recentList" class="recent-list"><div class="empty">هنوز آبشده‌ای ثبت نشده است.</div></div>
+              <button class="outline-gold-btn" data-nav="entries">مشاهده همه</button>
+            </section>
+          </div>
+        </section>
+
+        <section id="page-register" class="page single-page"><div class="single-card-wrap"><div id="registerCloneMount"></div></div></section>
+
+        <section id="page-entries" class="page">
+          <section class="wide-card">
+            <div class="card-head"><div><h2>آبشده‌ها</h2><p class="muted">لیست ثبت‌ها و مدیریت مستقیم</p></div><button class="danger-outline" id="clearAllEntries">پاک کردن همه</button></div>
+            <div class="entries-table" id="entriesTable"></div>
+          </section>
+        </section>
+
+        <section id="page-calculations" class="page">
+          <div class="calculation-grid"><div id="raiseCloneMount"></div><div id="lowerCloneMount"></div></div>
+        </section>
+
+        <section id="page-quick" class="page">
+          <div class="calculation-grid">
+            <section class="info-card tall"><div class="card-head"><h2>تقسیم ۳۶.۷۹٪ / ۶۳.۲۱٪</h2></div><label class="compact-field big"><span>عدد پایه</span><input id="splitBase" value="800" /></label><div class="mini-metrics big"><div><span>۳۶.۷۹٪</span><strong id="splitA">294.32</strong></div><div><span>۶۳.۲۱٪</span><strong id="splitB">505.68</strong></div></div></section>
+            <section class="info-card tall"><div class="card-head"><h2>اصلاح وزن برای افت عیار</h2></div><div class="two-inputs"><label class="compact-field"><span>وزن پایه</span><input id="corrWeight" value="250" /></label><label class="compact-field"><span>عیار هدف</span><input id="corrTarget" value="750" /></label></div><label class="compact-field big"><span>مقدار افت عیار</span><input id="corrDrop" value="1" /></label><div class="mini-metrics big"><div><span>بار افزوده (g)</span><strong id="corrAdd">—</strong></div><div><span>جمع وزن (g)</span><strong id="corrTotal">—</strong></div></div></section>
+          </div>
+        </section>
+
+        <section id="page-reports" class="page">
+          <section class="wide-card report-card"><div class="card-head"><h2>گزارش کامل</h2></div><p class="muted">فایل متنی تاریخ‌دار فقط شامل داده‌ها و نتیجه‌های نهایی</p><div class="report-path"><span>مسیر فعلی</span><strong id="reportPath">—</strong></div><div class="report-actions"><button class="primary-btn" id="saveReport"><span>ذخیره گزارش</span><b>▧</b></button><button class="ghost-btn" id="changeReportFolder">تغییر مسیر</button></div></section>
+        </section>
+      </div>
+    </main>
+
+    <aside id="settingsDrawer" class="settings-drawer">
+      <div class="drawer-head"><div><span class="gear">⚙</span><strong>تنظیمات ترازو</strong></div><button id="closeSettings" class="drawer-close">×</button></div>
+      <div class="drawer-scroll">
+        <section class="drawer-section"><h3>اتصال RS-232</h3>
+          <label><span>COM Port</span><input id="setPort" value="COM1" /></label>
+          <label><span>مدل ترازو</span><select id="setModel"><option>A&amp;D</option><option>Custom / Generic</option></select></label>
+          <label><span>Baud Rate</span><select id="setBaud"><option>1200</option><option selected>2400</option><option>4800</option><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select></label>
+          <label><span>Data Bits</span><select id="setData"><option selected>7</option><option>8</option></select></label>
+          <label><span>Parity</span><select id="setParity"><option>None</option><option selected>Even</option><option>Odd</option><option>Mark</option><option>Space</option></select></label>
+          <label><span>Stop Bits</span><select id="setStop"><option>One</option><option>OnePointFive</option><option selected>Two</option></select></label>
+          <label><span>Flow Control</span><select id="setFlow"><option selected>None</option><option>XOnXOff</option><option>RequestToSend</option><option>RequestToSendXOnXOff</option></select></label>
+        </section>
+        <section class="drawer-section"><h3>خواندن وزن</h3>
+          <label class="switch-row"><span>خواندن خودکار فقط پس از پایدار شدن</span><input type="checkbox" id="setAuto"/><i></i></label>
+          <label class="switch-row"><span>دریافت با کلید ↑</span><input type="checkbox" id="setUp" checked/><i></i></label>
+          <label class="switch-row"><span>دریافت با PRINT ترازو</span><input type="checkbox" id="setPrint" checked/><i></i></label>
+          <label class="switch-row"><span>ارسال فرمان هنگام ↑</span><input type="checkbox" id="setSendQuery" checked/><i></i></label>
+          <label><span>تعداد قرائت پایدار</span><input type="number" id="setSamples" min="2" max="10" value="3"/></label>
+          <label><span>حداکثر نوسان (g)</span><input type="number" step="0.001" id="setTolerance" value="0.02"/></label>
+        </section>
+        <section class="drawer-section"><h3>فرمان درخواست وزن</h3>
+          <label><span>فرمان</span><input id="setQuery" value="Q"/></label>
+          <label><span>پایان فرمان</span><select id="setEnding"><option>CRLF</option><option>CR</option><option>LF</option><option>None</option></select></label>
+          <label><span>مهلت دریافت (ms)</span><input type="number" id="setTimeout" value="1800"/></label>
+          <button class="outline-gold-btn full" id="testScale">تست دریافت وزن</button>
+          <div class="test-status" id="testStatus">آماده تست</div>
+        </section>
+        <section class="drawer-section"><h3>گزارش</h3><div class="drawer-path" id="drawerReportPath">—</div><button class="ghost-btn full" id="drawerChooseReport">انتخاب پوشه گزارش</button></section>
+      </div>
+      <div class="drawer-actions"><button class="ghost-btn" id="resetSettings">بازنشانی</button><button class="primary-btn" id="saveSettings"><span>ذخیره تنظیمات</span></button></div>
+    </aside>
+
+    <div id="toast" class="toast"></div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

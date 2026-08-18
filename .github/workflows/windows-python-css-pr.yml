@@ -1,0 +1,116 @@
+name: Python CSS Windows v1.6 PR test
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: windows/GoldBar.Python/requirements.txt
+      - name: Install
+        run: |
+          pip install -r windows/GoldBar.Python/requirements.txt
+          pip install pillow
+      - name: Assets
+        run: python windows/GoldBar.Python/generate_assets.py
+      - name: Patch packaged runtime
+        shell: pwsh
+        run: |
+          $p='windows/GoldBar.Python/app.py'; $t=Get-Content $p -Raw
+          $t=$t.Replace('allow_nan=False, default=lambda _: None','allow_nan=True').Replace('allow_nan=False','allow_nan=True')
+          $t=$t.Replace('from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot','from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot, Qt')
+          $t=$t.Replace('from PySide6.QtGui import QDesktopServices, QIcon','from PySide6.QtGui import QDesktopServices, QIcon, QColor')
+          $t=$t.Replace('splash.showMessage("در حال بارگذاری…", 0x0084 | 0x0004, 0xFFF1C1)  # AlignCenter | AlignBottom','splash.showMessage("در حال بارگذاری…", Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom, QColor("#fff1c1"))')
+          $t=$t.Replace('self.setMinimumSize(1180, 760)','self.setMinimumSize(960, 660)')
+          Set-Content $p $t -Encoding utf8
+          $j='windows/GoldBar.Python/web/app.js'; $js=Get-Content $j -Raw; $js=$js.Replace('JSON.parse(raw)',"JSON.parse(String(raw).replaceAll('NaN','null'))"); Set-Content $j $js -Encoding utf8
+          @'
+          .app-shell{direction:ltr!important;min-width:0!important}
+          .sidebar,.main-area{direction:rtl!important}
+          .register-grid{direction:ltr!important}
+          .register-grid .field-block,.register-grid .scale-read-btn,.register-grid .scale-hint{direction:rtl!important}
+          .register-actions{direction:ltr!important}
+          .register-actions>button{direction:rtl!important}
+          .settings-drawer{right:14px!important;left:auto!important;transform:translateX(calc(100% + 25px))!important}
+          .settings-drawer.open{transform:translateX(0)!important}
+          @media(max-width:1100px){
+            .app-shell{grid-template-columns:190px minmax(0,1fr)!important}
+            .sidebar{padding:10px 8px 9px!important;gap:7px!important}
+            .brand-card{height:152px!important}
+            .gold-bar{width:104px!important;height:82px!important}
+            .brand-title{font-size:20px!important}
+            .link-button{font-size:11px!important;padding-top:3px!important}
+            .nav-list{gap:2px!important}
+            .nav-item{height:39px!important;padding:0 9px!important;gap:8px!important;font-size:12px!important}
+            .nav-icon{font-size:16px!important;width:19px!important}
+            .scale-mini{padding:9px!important}
+            .scale-mini-value{padding:5px 0!important}
+            .scale-mini-value span{font-size:25px!important}
+            .content-scroll{padding-left:12px!important;padding-right:12px!important}
+            .topbar{padding-left:16px!important;padding-right:16px!important}
+            .metrics-grid{gap:8px!important}
+            .metric-card{padding-left:10px!important;padding-right:10px!important}
+            .metric-orb{width:38px!important;height:38px!important;font-size:19px!important;left:10px!important}
+            .register-grid{grid-template-columns:minmax(180px,1fr) 150px minmax(230px,1.25fr)!important;gap:8px!important;padding-left:14px!important;padding-right:14px!important}
+          }
+          '@ | Add-Content windows/GoldBar.Python/web/style.css -Encoding utf8
+      - name: Core selftest
+        shell: pwsh
+        run: |
+          $env:GOLDBAR_PY_SELFTEST='1'; python windows/GoldBar.Python/app.py
+          if($LASTEXITCODE -ne 0){throw 'selftest failed'}
+      - name: PyInstaller
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/python-installed | Out-Null
+          $web=(Resolve-Path windows/GoldBar.Python/web).Path; $ico=(Resolve-Path windows/GoldBar.Python/AppIcon.ico).Path
+          pyinstaller --noconfirm --clean --windowed --name GoldBar --icon "$ico" --add-data "$web;web" --add-data "$ico;." --distpath build/python-installed --workpath build/pyi-work windows/GoldBar.Python/app.py
+          if(!(Test-Path build/python-installed/GoldBar/GoldBar.exe)){throw 'exe missing'}
+      - name: Install Inno
+        shell: pwsh
+        run: |
+          $iscc='C:\Program Files (x86)\Inno Setup 6\ISCC.exe'; if(!(Test-Path $iscc)){choco install innosetup --no-progress -y}
+      - name: Setup
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/python-installer | Out-Null
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' windows/GoldBar.Python/installer/GoldBar.iss
+          if(!(Test-Path build/python-installer/GoldBar-Setup-v1.6.0.exe)){throw 'setup missing'}
+      - name: Installed UI test
+        shell: pwsh
+        run: |
+          $setup=(Resolve-Path build/python-installer/GoldBar-Setup-v1.6.0.exe).Path; $dir=Join-Path $env:TEMP 'GoldBar-v160-PR'
+          Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+          $i=Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$dir+'"') -Wait -PassThru; if($i.ExitCode -ne 0){throw 'install failed'}
+          $shot=(Join-Path (Resolve-Path build).Path 'python-css-dashboard.png'); $env:GOLDBAR_UI_SCREENSHOT=$shot; $env:GOLDBAR_SCREENSHOT_EXIT='1'
+          $proc=Start-Process (Join-Path $dir 'GoldBar.exe') -PassThru; $ok=$false
+          for($n=0;$n -lt 90;$n++){Start-Sleep -Milliseconds 350;if(Test-Path $shot){if((Get-Item $shot).Length -gt 35000){$ok=$true;break}};if($proc.HasExited -and !(Test-Path $shot)){break}}
+          if(!$proc.HasExited){Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue}; if(!$ok){throw 'UI capture failed'}
+      - name: Metadata
+        shell: pwsh
+        run: |
+          Get-FileHash build/python-installer/GoldBar-Setup-v1.6.0.exe -Algorithm SHA256 | Format-List | Out-File build/python-css-metadata.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GoldBar-Python-CSS-Setup-v1.6.0
+          path: build/python-installer/GoldBar-Setup-v1.6.0.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: GoldBar-Python-CSS-v1.6.0-visual
+          path: |
+            build/python-css-dashboard.png
+            build/python-css-metadata.txt
+          if-no-files-found: ignore
