@@ -1,4 +1,4 @@
-# Gold Bar Windows v2 production build - CI trigger after PR creation
+# Gold Bar Windows v2 production build
 name: Build Gold Bar Windows Installer
 
 on:
@@ -32,7 +32,8 @@ jobs:
         run: |
           $work = Join-Path $PWD 'work'
           New-Item -ItemType Directory -Force -Path $work | Out-Null
-          Expand-Archive -Path 'ci/GoldBar_Windows_Release_v2_Source.zip' -DestinationPath $work -Force
+          tar -xf 'ci/GoldBar_Windows_Release_v2_Source.zip' -C $work
+          if ($LASTEXITCODE -ne 0) { throw 'source extraction failed' }
 
       - name: Restore and publish self-contained x64
         shell: pwsh
@@ -40,6 +41,7 @@ jobs:
           $proj = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/GoldBar.Windows.csproj'
           $out = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/publish'
           dotnet restore $proj -r win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'dotnet restore failed' }
           dotnet publish $proj -c Release -r win-x64 --self-contained true --no-restore -o $out -p:PublishReadyToRun=true -p:PublishSingleFile=false
           if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 
