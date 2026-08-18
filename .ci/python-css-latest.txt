@@ -1,0 +1,6 @@
+run_id=32184056866
+run_attempt=1
+head_sha=b95fe9316493e89b76712793e25b5fe7e0d3dbb6
+conclusion_hint=failure
+installer_artifact=GoldBar-Python-CSS-Setup-v1.6.0
+visual_artifact=GoldBar-Python-CSS-v1.6.0-visual
