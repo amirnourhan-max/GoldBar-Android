@@ -4,11 +4,7 @@
     android:minHeight="120dp"
     android:minResizeWidth="180dp"
     android:minResizeHeight="100dp"
-    android:targetCellWidth="4"
-    android:targetCellHeight="2"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:updatePeriodMillis="0"
-    android:initialLayout="@layout/widget_quick_calc"
-    android:previewLayout="@layout/widget_quick_calc"
-    android:description="@string/widget_description" />
+    android:initialLayout="@layout/widget_quick_calc" />
