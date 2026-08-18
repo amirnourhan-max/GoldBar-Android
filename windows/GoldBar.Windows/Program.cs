@@ -37,9 +37,6 @@ internal static class Program
             var page = Environment.GetEnvironmentVariable("GOLDBAR_UI_PAGE");
             if (!string.IsNullOrWhiteSpace(page))
             {
-                // Open the requested page only after the native form handle and all
-                // docked controls exist. This is especially important for the
-                // integrated Settings drawer, which must sit above the dashboard.
                 main.Shown += (_, _) =>
                 {
                     try { main.BeginInvoke((Action)(() => main.ShowPageForTest(page))); }
@@ -129,8 +126,6 @@ internal static class Program
 
         main.Shown += (_, _) =>
         {
-            // Give the integrated drawer and SplitContainers time to complete their
-            // first DPI-aware layout before capturing the real installed UI.
             var timer = new System.Windows.Forms.Timer { Interval = 1800 };
             timer.Tick += (_, _) =>
             {
@@ -138,9 +133,19 @@ internal static class Program
                 timer.Dispose();
                 try
                 {
+                    main.Activate();
                     main.Refresh();
-                    using var bitmap = new Bitmap(main.Width, main.Height);
-                    main.DrawToBitmap(bitmap, new Rectangle(Point.Empty, main.Size));
+                    Application.DoEvents();
+
+                    // Capture the actual Windows desktop pixels rather than relying on
+                    // DrawToBitmap. This verifies overlays such as the integrated
+                    // Settings drawer exactly as the operator sees them on screen.
+                    var bounds = main.Bounds;
+                    using var bitmap = new Bitmap(bounds.Width, bounds.Height);
+                    using (var g = Graphics.FromImage(bitmap))
+                    {
+                        g.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size, CopyPixelOperation.SourceCopy);
+                    }
                     var directory = Path.GetDirectoryName(path);
                     if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
                     bitmap.Save(path, ImageFormat.Png);
