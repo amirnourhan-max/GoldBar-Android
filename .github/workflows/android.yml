@@ -38,6 +38,27 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: Patch startup WindowInsets crash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/amirnourhan/goldbar/MainActivity.java')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('import android.view.WindowInsetsController;\n', '')
+          bad = '''        if (android.os.Build.VERSION.SDK_INT >= 30) {
+              WindowInsetsController c = getWindow().getInsetsController();
+              if (c != null) c.setSystemBarsAppearance(0,
+                      WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
+                      WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+          }
+
+          '''
+          if bad not in s:
+              raise SystemExit('Expected WindowInsets crash block not found')
+          p.write_text(s.replace(bad, ''), encoding='utf-8')
+          print('Startup crash patch applied')
+          PY
+
       - name: Verify Excel business logic
         run: |
           rm -rf build/logic-test
@@ -90,7 +111,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-v1.0.2-debug-apk
+          name: GoldBar-v1.0.3-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
@@ -99,7 +120,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-smoke-test-diagnostics
+          name: GoldBar-smoke-test-diagnostics-v103
           path: |
             build/logcat.txt
             build/window.xml
