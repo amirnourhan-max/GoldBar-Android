@@ -5,7 +5,7 @@ mkdir -p build
 adb logcat -c
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am force-stop com.amirnourhan.goldbar
-adb shell am start -W -n com.amirnourhan.goldbar/.MainActivity
+adb shell am start -W -n com.amirnourhan.goldbar/.MainActivityV106
 sleep 4
 
 adb shell pidof com.amirnourhan.goldbar | tr -d '\r' > build/pid-start.txt
@@ -13,6 +13,10 @@ test -s build/pid-start.txt
 adb shell uiautomator dump /sdcard/start.xml
 adb pull /sdcard/start.xml build/start.xml
 grep -q 'content-desc="gold-bar-title"' build/start.xml
+grep -q 'Amirnourhan' build/start.xml
+
+adb shell dumpsys package com.amirnourhan.goldbar > build/package.txt
+grep -q 'QuickCalcWidget' build/package.txt
 
 found=0
 for i in 1 2 3 4 5 6; do
@@ -26,6 +30,7 @@ for i in 1 2 3 4 5 6; do
   sleep 1
 done
 test "$found" = "1"
+grep -q 'محاسبه سریع' build/tools.xml
 
 python3 - <<'PY'
 import re
@@ -43,13 +48,19 @@ PY
 
 bash build/tap.sh
 sleep 2
-
 adb shell dumpsys input_method > build/input-method.txt
 grep -Eq 'mInputShown=true|mIsInputViewShown=true|inputShown=true|mShowRequested=true' build/input-method.txt
 adb shell uiautomator dump /sdcard/keyboard.xml
 adb pull /sdcard/keyboard.xml build/keyboard.xml
 grep -q 'content-desc="quick-split-base"' build/keyboard.xml
 adb exec-out screencap -p > build/keyboard.png
+
+adb shell input keyevent 4
+sleep 1
+for i in 1 2 3; do adb shell input swipe 520 1700 520 500 350; sleep 1; done
+adb shell uiautomator dump /sdcard/report.xml >/dev/null
+adb pull /sdcard/report.xml build/report.xml >/dev/null
+grep -q 'content-desc="save-report-button"' build/report.xml
 
 adb logcat -d > build/logcat.txt
 adb shell pidof com.amirnourhan.goldbar | tr -d '\r' > build/pid.txt
