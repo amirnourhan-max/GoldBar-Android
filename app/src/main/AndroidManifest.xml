@@ -8,7 +8,7 @@
         android:theme="@style/AppTheme">
 
         <activity
-            android:name=".MainActivityV108"
+            android:name=".MainActivityV109"
             android:exported="true"
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize">
