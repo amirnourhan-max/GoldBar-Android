@@ -8,7 +8,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: goldbar-python-css-v160-${{ github.event_name }}
+  cancel-in-progress: true
 
 jobs:
   python-css-windows:
@@ -167,3 +171,24 @@ jobs:
             build/python-css-metadata.txt
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Publish latest run pointer
+        if: ${{ always() && github.event_name == 'push' }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .ci | Out-Null
+          @"
+          run_id=${{ github.run_id }}
+          run_attempt=${{ github.run_attempt }}
+          head_sha=${{ github.sha }}
+          conclusion_hint=${{ job.status }}
+          installer_artifact=GoldBar-Python-CSS-Setup-v1.6.0
+          visual_artifact=GoldBar-Python-CSS-v1.6.0-visual
+          "@ | Set-Content .ci/python-css-latest.txt -Encoding utf8
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .ci/python-css-latest.txt
+          if (!(git diff --cached --quiet)) {
+            git commit -m 'Record Python CSS build run [skip ci]'
+            git push origin HEAD:feature/windows-python-css-v160
+          }
