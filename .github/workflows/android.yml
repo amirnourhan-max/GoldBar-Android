@@ -3,6 +3,8 @@ name: Build Zar Pulse APK
 on:
   push:
     branches: [ "zar-pulse" ]
+  pull_request:
+    branches: [ "zar-pulse" ]
   workflow_dispatch:
 
 jobs:
