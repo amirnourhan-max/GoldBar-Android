@@ -32,6 +32,7 @@ internal static class Program
         try
         {
             main = new DesktopMainFormV2();
+            DesktopV2VisualFixer.Attach(main);
             ApplyTestSize(main);
             ApplyTestPage(main);
         }
