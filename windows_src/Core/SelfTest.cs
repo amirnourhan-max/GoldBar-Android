@@ -1,3 +1,4 @@
+using System.IO;
 using GoldBar.Windows.Models;
 
 namespace GoldBar.Windows.Core;
