@@ -71,10 +71,39 @@ public partial class MainWindow : Window
 
         try
         {
-            await Task.Delay(250);
+            await Task.Delay(550);
+
+            var resolutionResults = new List<object>();
+            var resolutionOk = true;
+            foreach (var size in new[]
+                     {
+                         (Width: 960d, Height: 640d),
+                         (Width: 1280d, Height: 720d),
+                         (Width: 1366d, Height: 768d),
+                         (Width: 1536d, Height: 864d),
+                         (Width: 1600d, Height: 900d)
+                     })
+            {
+                WindowState = WindowState.Normal;
+                Width = size.Width;
+                Height = size.Height;
+                await Task.Delay(180);
+                var probeJson = await Web.ExecuteScriptAsync(
+                    "window.__goldbarLayoutProbe ? window.__goldbarLayoutProbe() : ({ok:false,reason:'probe-missing'})");
+                using var probeDoc = JsonDocument.Parse(probeJson);
+                var ok = probeDoc.RootElement.TryGetProperty("ok", out var okEl) && okEl.GetBoolean();
+                resolutionOk &= ok;
+                resolutionResults.Add(new { requested = $"{size.Width:0}x{size.Height:0}", ok, probe = probeJson });
+            }
+
+            Width = 1536;
+            Height = 1024;
+            await Task.Delay(200);
+
             const string script = """
 (() => {
-  const base = window.__goldbarSelfTest ? window.__goldbarSelfTest() : { ok: false };
+  const base = window.__goldbarSelfTest ? window.__goldbarSelfTest() : { ok: false, reason: 'base-test-missing' };
+  const calcProbe = window.__goldbarCalculationProbe ? window.__goldbarCalculationProbe() : { ok: false, reason: 'calc-probe-missing' };
   const title = () => document.querySelector('.dash-title span:last-child')?.textContent?.trim() || '';
   const nav = [...document.querySelectorAll('.nav-item')];
   const clickNav = label => {
@@ -83,44 +112,126 @@ public partial class MainWindow : Window
     btn.click();
     return btn.classList.contains('active');
   };
+  const num = value => Number(String(value ?? '').replace(/,/g, ''));
+  const summaryValues = () => [...document.querySelectorAll('.summary-card .metric-value')].map(el => num(el.textContent));
 
-  const meltsClicked = clickNav('آبشده‌ها');
-  const meltsNav = meltsClicked && title() === 'آبشده‌ها' && document.querySelector('#pageHost')?.classList.contains('active');
+  const before = summaryValues();
+  const beforeWeight = Number.isFinite(before[0]) ? before[0] : 0;
+  const beforeAverage = Number.isFinite(before[1]) ? before[1] : 0;
+  const beforeCount = Number.isFinite(before[2]) ? before[2] : 0;
+  const beforeWeighted = beforeWeight * beforeAverage;
 
   const registerClicked = clickNav('ثبت آبشده');
   const weight = document.querySelector('#weightInput');
   const assay = document.querySelector('#purityInput');
-  weight.value = '12.345';
+  const description = document.querySelector('#descriptionInput');
+
+  weight.value = '۱۲a۳.۴b';
+  weight.dispatchEvent(new Event('input', { bubbles: true }));
+  const numericPersianOk = weight.value === '123.4';
+  description.value = 'توضیحات تست 123';
+  description.dispatchEvent(new Event('input', { bubbles: true }));
+  const descriptionTextOk = description.value === 'توضیحات تست 123';
+
+  weight.value = '100';
   weight.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   const enterMovesToAssay = document.activeElement === assay;
-  assay.value = '750';
+  assay.value = '740';
   assay.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
-  clickNav('آبشده‌ها');
+  weight.value = '50';
+  weight.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  assay.value = '760';
+  assay.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+  window.__goldbarRecalculate?.();
+
+  const after = summaryValues();
+  const expectedWeight = beforeWeight + 150;
+  const expectedWeighted = beforeWeighted + (100 * 740) + (50 * 760);
+  const expectedAverage = expectedWeight > 0 ? expectedWeighted / expectedWeight : 0;
+  const expectedCount = beforeCount + 2;
+  const summaryMathOk = Math.abs(after[0] - expectedWeight) < 0.002
+    && Math.abs(after[1] - expectedAverage) < 0.002
+    && after[2] === expectedCount;
+
+  const clearButton = document.querySelector('#quickClearAll');
+  clearButton?.click();
+  const clearFieldsOnly = weight.value === '' && assay.value === '' && description.value === '';
+
+  const meltsClicked = clickNav('آبشده‌ها');
   const meltsText = document.querySelector('#pageHost')?.textContent || '';
-  const quickSaved = meltsText.includes('12.345') && meltsText.includes('750');
+  const meltsNav = meltsClicked && title() === 'آبشده‌ها' && document.querySelector('#pageHost')?.classList.contains('active');
+  const quickSaved = meltsText.includes('100') && meltsText.includes('740') && meltsText.includes('50') && meltsText.includes('760');
+  const clearPreservedEntries = quickSaved;
+
+  clickNav('داشبورد');
+  document.querySelector('.view-all')?.click();
+  const viewAllWorks = title() === 'آبشده‌ها' && document.querySelector('#pageHost')?.classList.contains('active');
+
+  const assayNav = clickNav('محاسبات عیار');
+  const calcCards = [...document.querySelectorAll('.calc-card')];
+  const calcInputs0 = calcCards[0] ? [...calcCards[0].querySelectorAll('input')] : [];
+  const calcInputs1 = calcCards[1] ? [...calcCards[1].querySelectorAll('input')] : [];
+  if (calcInputs0[0]) calcInputs0[0].value = '747';
+  if (calcInputs0[1]) calcInputs0[1].value = '995';
+  if (calcInputs1[0]) calcInputs1[0].value = '747';
+  if (calcInputs1[1]) calcInputs1[1].value = '45';
+  window.__goldbarRecalculate?.();
+  const calcWeightShown = num(calcCards[1]?.querySelectorAll('.mini-stats b')[1]?.textContent);
+  const calcRequiredShown = num(calcCards[1]?.querySelector('.wide-stat b')?.textContent);
+  const topRequiredShown = num(document.querySelectorAll('.summary-card .metric-value')[3]?.textContent);
+  const calculationUiWired = assayNav
+    && Math.abs(calcWeightShown - expectedWeight) < 0.002
+    && Number.isFinite(calcRequiredShown)
+    && Math.abs(Math.max(0, calcRequiredShown) - topRequiredShown) < 0.002;
+
+  const interval = document.querySelector('#readInterval');
+  const decimals = document.querySelector('#decimals');
+  interval.value = '8e0x0';
+  interval.dispatchEvent(new Event('input', { bubbles: true }));
+  decimals.value = '9x';
+  decimals.dispatchEvent(new Event('input', { bubbles: true }));
+  const settingsNumericOk = interval.value === '800' && decimals.value === '6';
 
   const reportsClicked = clickNav('گزارش‌ها');
-  const reportsWork = reportsClicked && title() === 'گزارش‌ها' && (document.querySelector('#pageHost')?.textContent || '').includes('تعداد آبشده‌ها');
+  const reportText = document.querySelector('#pageHost')?.textContent || '';
+  const reportsWork = reportsClicked && title() === 'گزارش‌ها' && reportText.includes('تعداد آبشده‌ها') && reportText.includes(String(expectedCount));
 
   const settingsClicked = clickNav('تنظیمات');
   const settingsWork = settingsClicked && title() === 'تنظیمات';
-
+  const quickCalcClicked = clickNav('محاسبه سریع');
+  const quickCalcWork = quickCalcClicked && title() === 'محاسبه سریع';
   const dashboardClicked = clickNav('داشبورد');
   const dashboardWork = dashboardClicked && title() === 'داشبورد';
 
+  const labelsOk = document.querySelector('.recent-card h3')?.textContent.trim() === 'آبشده‌های ثبت شده'
+    && document.querySelectorAll('.calc-card h3')[0]?.textContent.trim() === 'افزایش عیار'
+    && document.querySelectorAll('.calc-card h3')[1]?.textContent.trim() === 'عیار';
+
   return {
-    ok: Boolean(base.ok && meltsNav && registerClicked && enterMovesToAssay && quickSaved && reportsWork && settingsWork && dashboardWork),
-    base, meltsNav, registerClicked, enterMovesToAssay, quickSaved, reportsWork, settingsWork, dashboardWork
+    ok: Boolean(base.ok && calcProbe.ok && registerClicked && numericPersianOk && descriptionTextOk
+      && enterMovesToAssay && summaryMathOk && clearFieldsOnly && clearPreservedEntries && meltsNav
+      && viewAllWorks && calculationUiWired && settingsNumericOk && reportsWork && settingsWork
+      && quickCalcWork && dashboardWork && labelsOk),
+    base, calcProbe, registerClicked, numericPersianOk, descriptionTextOk, enterMovesToAssay,
+    summaryMathOk, expectedWeight, expectedAverage, expectedCount, after,
+    clearFieldsOnly, clearPreservedEntries, meltsNav, viewAllWorks, calculationUiWired,
+    calcWeightShown, calcRequiredShown, topRequiredShown, settingsNumericOk,
+    reportsWork, settingsWork, quickCalcWork, dashboardWork, labelsOk
   };
 })()
 """;
 
             var json = await Web.ExecuteScriptAsync(script);
             using var doc = JsonDocument.Parse(json);
-            var ok = doc.RootElement.TryGetProperty("ok", out var okElement) && okElement.GetBoolean();
-            Console.WriteLine("UI-SELF-TEST: " + json);
-            Application.Current.Shutdown(ok ? 0 : 1);
+            var interactionOk = doc.RootElement.TryGetProperty("ok", out var okElement) && okElement.GetBoolean();
+            var overall = resolutionOk && interactionOk;
+
+            Console.WriteLine("UI-SELF-TEST RESOLUTIONS: " + JsonSerializer.Serialize(resolutionResults));
+            Console.WriteLine("UI-SELF-TEST INTERACTIONS: " + json);
+            Console.WriteLine(overall ? "UI-SELF-TEST: PASS" : "UI-SELF-TEST: FAIL");
+            Application.Current.Shutdown(overall ? 0 : 1);
         }
         catch (Exception ex)
         {
