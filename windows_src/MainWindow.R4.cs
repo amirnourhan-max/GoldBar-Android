@@ -92,6 +92,18 @@ public partial class MainWindow
                 "  s11.src = 'r11.js';\n" +
                 "  s11.dataset.goldbarR11 = '1';\n" +
                 "  document.body.appendChild(s11);\n" +
+                "}\n" +
+                "if (!document.querySelector('script[data-goldbar-r12]')) {\n" +
+                "  const s12 = document.createElement('script');\n" +
+                "  s12.src = 'r12.js';\n" +
+                "  s12.dataset.goldbarR12 = '1';\n" +
+                "  document.body.appendChild(s12);\n" +
+                "}\n" +
+                "if (!document.querySelector('script[data-goldbar-r13-cost]')) {\n" +
+                "  const s13 = document.createElement('script');\n" +
+                "  s13.src = 'r13-cost-ui.js';\n" +
+                "  s13.dataset.goldbarR13Cost = '1';\n" +
+                "  document.body.appendChild(s13);\n" +
                 "}\n";
             await Web.ExecuteScriptAsync(script);
         }
