@@ -42,8 +42,8 @@ jobs:
         run: |
           $exe = Join-Path $PWD 'windows_src/publish/GoldBar.exe'
           if (!(Test-Path $exe)) { throw 'GoldBar.exe was not produced' }
-          & $exe --self-test
-          if ($LASTEXITCODE -ne 0) { throw "GoldBar self-test failed with exit code $LASTEXITCODE" }
+          $p = Start-Process -FilePath $exe -ArgumentList '--self-test' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "GoldBar self-test failed with exit code $($p.ExitCode)" }
 
       - name: GUI startup smoke test
         shell: pwsh
@@ -79,12 +79,12 @@ jobs:
           $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0.exe'
           if (!(Test-Path $setup)) { throw 'Installer was not produced' }
           $dest = Join-Path $env:RUNNER_TEMP 'GoldBar-Install-Test'
-          & $setup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$dest"
-          if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit code $LASTEXITCODE" }
+          $ip = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$dest") -Wait -PassThru
+          if ($ip.ExitCode -ne 0) { throw "Installer failed with exit code $($ip.ExitCode)" }
           $installedExe = Join-Path $dest 'GoldBar.exe'
           if (!(Test-Path $installedExe)) { throw 'Installed GoldBar.exe not found' }
-          & $installedExe --self-test
-          if ($LASTEXITCODE -ne 0) { throw 'Installed executable self-test failed' }
+          $sp = Start-Process -FilePath $installedExe -ArgumentList '--self-test' -Wait -PassThru
+          if ($sp.ExitCode -ne 0) { throw "Installed executable self-test failed with exit code $($sp.ExitCode)" }
 
       - name: SHA256
         shell: pwsh
