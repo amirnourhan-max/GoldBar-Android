@@ -1,20 +1,34 @@
 using System.IO;
+using System.IO.Ports;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Interop;
 using GoldBar.Windows.Models;
 using GoldBar.Windows.Services;
+using Microsoft.Win32;
 using Microsoft.Web.WebView2.Core;
 
 namespace GoldBar.Windows;
 
 public partial class MainWindow : Window
 {
+    private const uint WmNcLButtonDown = 0x00A1;
+    private const int HtCaption = 2;
+
     private readonly SettingsStore _settingsStore = new();
     private readonly ScaleService _scale = new();
+    private readonly ReportService _reportService = new();
     private readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
     private readonly bool _runUiSelfTest;
     private bool _uiSelfTestStarted;
     private ScaleSettings _settings = ScaleSettings.Defaults();
+
+    [DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    private static extern nint SendMessage(nint hWnd, uint msg, nint wParam, nint lParam);
 
     public MainWindow(bool runUiSelfTest = false)
     {
@@ -32,7 +46,12 @@ public partial class MainWindow : Window
         _settings = await _settingsStore.LoadAsync();
         try
         {
-            await Web.EnsureCoreWebView2Async();
+            var userData = _runUiSelfTest
+                ? Path.Combine(Path.GetTempPath(), $"GoldBar-WebView2-Test-{Environment.ProcessId}")
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GoldBar", "WebView2");
+            Directory.CreateDirectory(userData);
+            var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userData);
+            await Web.EnsureCoreWebView2Async(environment);
         }
         catch (Exception ex)
         {
@@ -71,13 +90,14 @@ public partial class MainWindow : Window
 
         try
         {
-            await Task.Delay(700);
+            await Task.Delay(900);
 
             const string script = """
 (() => {
   const base = window.__goldbarSelfTest ? window.__goldbarSelfTest() : { ok: false, reason: 'base-test-missing' };
   const calcProbe = window.__goldbarCalculationProbe ? window.__goldbarCalculationProbe() : { ok: false, reason: 'calc-probe-missing' };
   const actualLayout = window.__goldbarLayoutProbe ? window.__goldbarLayoutProbe() : { ok: false, reason: 'layout-probe-missing' };
+  const r3 = window.__goldbarR3Probe ? window.__goldbarR3Probe() : { ok: false, reason: 'r3-probe-missing' };
 
   const resolutionCases = [
     [960, 640], [1280, 720], [1366, 768], [1536, 864], [1600, 900], [1920, 1080], [2560, 1440]
@@ -100,6 +120,17 @@ public partial class MainWindow : Window
   const num = value => Number(String(value ?? '').replace(/,/g, ''));
   const summaryValues = () => [...document.querySelectorAll('.summary-card .metric-value')].map(el => num(el.textContent));
 
+  const weight = document.querySelector('#weightInput');
+  const assay = document.querySelector('#purityInput');
+  const description = document.querySelector('#descriptionInput');
+
+  weight.value = '321.123';
+  window.__goldbarBridgeTestWeight?.(222.222);
+  const autoWeightDoesNotOverwrite = weight.value === '321.123';
+  window.__goldbarBridgeArmCapture?.();
+  window.__goldbarBridgeTestWeight?.(333.333);
+  const manualWeightCaptureWorks = Math.abs(num(weight.value) - 333.333) < 0.0001;
+
   const before = summaryValues();
   const beforeWeight = Number.isFinite(before[0]) ? before[0] : 0;
   const beforeAverage = Number.isFinite(before[1]) ? before[1] : 0;
@@ -107,10 +138,6 @@ public partial class MainWindow : Window
   const beforeWeighted = beforeWeight * beforeAverage;
 
   const registerClicked = clickNav('ثبت آبشده');
-  const weight = document.querySelector('#weightInput');
-  const assay = document.querySelector('#purityInput');
-  const description = document.querySelector('#descriptionInput');
-
   weight.value = '۱۲a۳.۴b';
   weight.dispatchEvent(new Event('input', { bubbles: true }));
   const numericPersianOk = weight.value === '123.4';
@@ -162,6 +189,17 @@ public partial class MainWindow : Window
   if (calcInputs1[0]) calcInputs1[0].value = '747';
   if (calcInputs1[1]) calcInputs1[1].value = '45';
   window.__goldbarRecalculate?.();
+  const silverBefore = Number(calcCards[1]?.dataset.silverRequired || NaN);
+  if (calcInputs1[1]) {
+    calcInputs1[1].value = '30';
+    calcInputs1[1].dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  const silverAfter = Number(calcCards[1]?.dataset.silverRequired || NaN);
+  const silverRefreshWorks = Number.isFinite(silverBefore) && Number.isFinite(silverAfter) && Math.abs(silverAfter - silverBefore) > 0.000001;
+  if (calcInputs1[1]) {
+    calcInputs1[1].value = '45';
+    calcInputs1[1].dispatchEvent(new Event('input', { bubbles: true }));
+  }
   const calcWeightShown = num(calcCards[1]?.querySelectorAll('.mini-stats b')[1]?.textContent);
   const calcRequiredShown = num(calcCards[1]?.querySelector('.wide-stat b')?.textContent);
   const topRequiredShown = num(document.querySelectorAll('.summary-card .metric-value')[3]?.textContent);
@@ -194,12 +232,14 @@ public partial class MainWindow : Window
     && document.querySelectorAll('.calc-card h3')[1]?.textContent.trim() === 'عیار';
 
   return {
-    ok: Boolean(base.ok && calcProbe.ok && actualLayout.ok && resolutionFormulaOk
+    ok: Boolean(base.ok && calcProbe.ok && actualLayout.ok && r3.ok && resolutionFormulaOk
+      && autoWeightDoesNotOverwrite && manualWeightCaptureWorks && silverRefreshWorks
       && registerClicked && numericPersianOk && descriptionTextOk && enterMovesToAssay
       && summaryMathOk && clearFieldsOnly && clearPreservedEntries && meltsNav && viewAllWorks
       && calculationUiWired && settingsNumericOk && reportsWork && settingsWork
       && quickCalcWork && dashboardWork && labelsOk),
-    base, calcProbe, actualLayout, resolutionCases, resolutionFormulaOk,
+    base, calcProbe, actualLayout, r3, resolutionCases, resolutionFormulaOk,
+    autoWeightDoesNotOverwrite, manualWeightCaptureWorks, silverRefreshWorks,
     registerClicked, numericPersianOk, descriptionTextOk, enterMovesToAssay,
     summaryMathOk, expectedWeight, expectedAverage, expectedCount, after,
     clearFieldsOnly, clearPreservedEntries, meltsNav, viewAllWorks, calculationUiWired,
@@ -246,13 +286,17 @@ public partial class MainWindow : Window
             {
                 "window:minimize" => Do(() => WindowState = System.Windows.WindowState.Minimized),
                 "window:maximizeToggle" => Do(() => WindowState = WindowState == System.Windows.WindowState.Maximized ? System.Windows.WindowState.Normal : System.Windows.WindowState.Maximized),
+                "window:drag" => BeginWindowDrag(),
                 "window:close" => Do(Close),
                 "settings:get" => _settings,
                 "settings:save" => await SaveSettingsAsync(payload),
                 "settings:reset" => await ResetSettingsAsync(),
+                "scale:listPorts" => new { ports = SerialPort.GetPortNames().OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(), selected = _settings.Port },
                 "scale:connect" => new { ok = await _scale.ConnectAsync(_settings) },
                 "scale:disconnect" => Do(() => _scale.Disconnect()),
                 "scale:read" => new { ok = await EnsureAndReadScaleAsync() },
+                "report:chooseDirectory" => await ChooseReportDirectoryAsync(),
+                "report:save" => SaveReport(payload),
                 _ => throw new InvalidOperationException($"Unknown action: {action}")
             };
             Reply(id, true, result, null);
@@ -263,9 +307,30 @@ public partial class MainWindow : Window
         }
     }
 
+    private object BeginWindowDrag()
+    {
+        try
+        {
+            if (WindowState == System.Windows.WindowState.Maximized)
+                WindowState = System.Windows.WindowState.Normal;
+            var handle = new WindowInteropHelper(this).Handle;
+            ReleaseCapture();
+            SendMessage(handle, WmNcLButtonDown, (nint)HtCaption, 0);
+            return new { ok = true };
+        }
+        catch (Exception ex)
+        {
+            return new { ok = false, error = ex.Message };
+        }
+    }
+
     private async Task<ScaleSettings> SaveSettingsAsync(JsonElement payload)
     {
         var next = payload.Deserialize<ScaleSettings>(_json) ?? ScaleSettings.Defaults();
+        if (!payload.TryGetProperty("reportDirectory", out var reportDir) ||
+            reportDir.ValueKind == JsonValueKind.Null || string.IsNullOrWhiteSpace(reportDir.GetString()))
+            next.ReportDirectory = _settings.ReportDirectory;
+
         _settings = await _settingsStore.SaveAsync(next);
         if (_scale.IsConnected) await _scale.ConnectAsync(_settings);
         else _scale.ApplySettings(_settings);
@@ -277,6 +342,32 @@ public partial class MainWindow : Window
         _settings = await _settingsStore.ResetAsync();
         if (_scale.IsConnected) await _scale.ConnectAsync(_settings);
         return _settings;
+    }
+
+    private async Task<object> ChooseReportDirectoryAsync()
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "انتخاب محل ذخیره گزارش‌های Gold Bar",
+            Multiselect = false,
+            InitialDirectory = Directory.Exists(_settings.ReportDirectory)
+                ? _settings.ReportDirectory
+                : ScaleSettings.GetDefaultReportDirectory()
+        };
+
+        if (dialog.ShowDialog(this) != true)
+            return new { ok = false, path = _settings.ReportDirectory };
+
+        _settings.ReportDirectory = dialog.FolderName;
+        _settings = await _settingsStore.SaveAsync(_settings);
+        return new { ok = true, path = _settings.ReportDirectory };
+    }
+
+    private object SaveReport(JsonElement payload)
+    {
+        var request = payload.Deserialize<ReportRequest>(_json) ?? new ReportRequest();
+        var path = _reportService.SaveXlsx(_settings.ReportDirectory, request);
+        return new { ok = true, path, directory = _settings.ReportDirectory, count = request.Entries.Count };
     }
 
     private async Task<bool> EnsureAndReadScaleAsync()
