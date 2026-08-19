@@ -86,6 +86,12 @@ public partial class MainWindow
                 "  s8.src = 'r8.js';\n" +
                 "  s8.dataset.goldbarR8 = '1';\n" +
                 "  document.body.appendChild(s8);\n" +
+                "}\n" +
+                "if (!document.querySelector('script[data-goldbar-r11]')) {\n" +
+                "  const s11 = document.createElement('script');\n" +
+                "  s11.src = 'r11.js';\n" +
+                "  s11.dataset.goldbarR11 = '1';\n" +
+                "  document.body.appendChild(s11);\n" +
                 "}\n";
             await Web.ExecuteScriptAsync(script);
         }
@@ -108,6 +114,7 @@ public partial class MainWindow
                 "report:import" => await R4ImportReportAsync(),
                 "scale:test" => await R4TestScaleAsync(payload),
                 "user:get" => new { username = CurrentUser.Username },
+                "user:change-password" => R11ChangePassword(),
                 _ => throw new InvalidOperationException($"Unknown r4 action: {action}")
             };
             R4Reply(id, true, result, null);
@@ -116,6 +123,15 @@ public partial class MainWindow
         {
             R4Reply(id, false, null, ex.Message);
         }
+    }
+
+    private object R11ChangePassword()
+    {
+        if (_runUiSelfTest) return new { ok = true, selfTest = true };
+        var store = new CredentialStore();
+        var dialog = new ChangePasswordDialog(store, CurrentUser.Username) { Owner = this };
+        var changed = dialog.ShowDialog() == true;
+        return new { ok = changed, cancelled = !changed };
     }
 
     private async Task<object> R4TestScaleAsync(JsonElement payload)
@@ -200,7 +216,13 @@ public partial class MainWindow
             try
             {
                 if (Web.CoreWebView2 is not null)
-                    await Web.ExecuteScriptAsync("localStorage.removeItem('goldbar.windows.entries.v2');");
+                {
+                    await Web.ExecuteScriptAsync(
+                        "localStorage.removeItem('goldbar.windows.entries.v2');" +
+                        "sessionStorage.removeItem('goldbar.windows.r11.businessReset');" +
+                        "sessionStorage.removeItem('goldbar.windows.r11.assayPageReset');" +
+                        "sessionStorage.removeItem('goldbar.windows.r11.quickPageReset');");
+                }
             }
             catch { }
 
