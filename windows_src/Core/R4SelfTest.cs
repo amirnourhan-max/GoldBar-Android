@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using GoldBar.Windows.Models;
 using GoldBar.Windows.Services;
