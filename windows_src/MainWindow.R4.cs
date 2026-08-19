@@ -37,15 +37,14 @@ public partial class MainWindow
         try
         {
             var selfTest = _runUiSelfTest ? "true" : "false";
-            var script = $"""
-window.__goldbarR4SelfTest = {selfTest};
-if (!document.querySelector('script[data-goldbar-r4]')) {{
-  const s = document.createElement('script');
-  s.src = 'r4.js';
-  s.dataset.goldbarR4 = '1';
-  document.body.appendChild(s);
-}}
-""";
+            var script =
+                "window.__goldbarR4SelfTest = " + selfTest + ";\n" +
+                "if (!document.querySelector('script[data-goldbar-r4]')) {\n" +
+                "  const s = document.createElement('script');\n" +
+                "  s.src = 'r4.js';\n" +
+                "  s.dataset.goldbarR4 = '1';\n" +
+                "  document.body.appendChild(s);\n" +
+                "}\n";
             await Web.ExecuteScriptAsync(script);
         }
         catch { }
