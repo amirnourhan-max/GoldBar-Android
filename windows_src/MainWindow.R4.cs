@@ -80,6 +80,12 @@ public partial class MainWindow
                 "  s7.src = 'r7.js';\n" +
                 "  s7.dataset.goldbarR7 = '1';\n" +
                 "  document.body.appendChild(s7);\n" +
+                "}\n" +
+                "if (!document.querySelector('script[data-goldbar-r8]')) {\n" +
+                "  const s8 = document.createElement('script');\n" +
+                "  s8.src = 'r8.js';\n" +
+                "  s8.dataset.goldbarR8 = '1';\n" +
+                "  document.body.appendChild(s8);\n" +
                 "}\n";
             await Web.ExecuteScriptAsync(script);
         }
