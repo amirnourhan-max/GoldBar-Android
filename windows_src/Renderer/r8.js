@@ -110,7 +110,7 @@
 
   function updateVersion() {
     const version = $('.version');
-    if (version) version.textContent = 'GOLD BAR v2.0.0-r8';
+    if (version) version.textContent = 'GOLD BAR v2.0.0-r9';
   }
 
   function installProbe(attempt = 0) {
