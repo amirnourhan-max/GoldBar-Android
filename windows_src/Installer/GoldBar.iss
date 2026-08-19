@@ -40,9 +40,14 @@ Name: "{autodesktop}\Gold Bar"; Filename: "{app}\{#MyAppExeName}"; Tasks: deskto
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 Name: "webview2"; Description: "Install/repair Microsoft Edge WebView2 Runtime"; GroupDescription: "Runtime:"; Flags: checkedonce
 
+[InstallDelete]
+; A fresh installer run always starts the login identity from registration. This also
+; handles upgrades from older builds whose uninstallers did not remove credentials.
+Type: files; Name: "{localappdata}\GoldBar\credentials.json"
+Type: files; Name: "{localappdata}\GoldBar\credentials.json.tmp"
+
 [UninstallDelete]
-; Removing the application also removes only the login credential. On the next
-; installation Gold Bar therefore starts with first-run registration again.
+; A normal uninstall also removes only the login credential. Scale/report settings are kept.
 Type: files; Name: "{localappdata}\GoldBar\credentials.json"
 Type: files; Name: "{localappdata}\GoldBar\credentials.json.tmp"
 
