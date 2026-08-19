@@ -63,6 +63,7 @@ jobs:
           Start-Sleep -Seconds 7
           if ($p.HasExited) { throw "GoldBar GUI exited early with code $($p.ExitCode)" }
           Stop-Process -Id $p.Id -Force
+          Remove-Item (Join-Path $PWD 'windows_src/publish/GoldBar.exe.WebView2') -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Download WebView2 bootstrapper
         shell: pwsh
@@ -86,7 +87,7 @@ jobs:
       - name: Silent installer validation and installed-app retest
         shell: pwsh
         run: |
-          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r2.exe'
+          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r3.exe'
           if (!(Test-Path $setup)) { throw 'Installer was not produced' }
           $dest = Join-Path $env:RUNNER_TEMP 'GoldBar-Install-Test'
           $ip = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$dest") -Wait -PassThru
@@ -104,13 +105,13 @@ jobs:
       - name: SHA256
         shell: pwsh
         run: |
-          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r2.exe'
+          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r3.exe'
           Get-FileHash $setup -Algorithm SHA256 | Format-List
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-Windows-Installer-v2.0.0-r2
-          path: windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r2.exe
+          name: GoldBar-Windows-Installer-v2.0.0-r3
+          path: windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r3.exe
           if-no-files-found: error
           retention-days: 14
