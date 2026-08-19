@@ -56,4 +56,23 @@
     onScaleStatus: cb => on('scale:status', cb),
     onScaleError: cb => on('scale:error', cb)
   };
+
+  // app.js assigns the final quick-action ids and listeners synchronously.
+  // Replace only the clear button after initialization so "پاک کردن همه"
+  // clears the quick-entry fields and can never delete saved melt records.
+  setTimeout(() => {
+    const oldButton = document.querySelector('#quickClearAll');
+    if (!oldButton || !oldButton.parentNode) return;
+    const button = oldButton.cloneNode(true);
+    oldButton.parentNode.replaceChild(button, oldButton);
+    button.addEventListener('click', () => {
+      const weight = document.querySelector('#weightInput');
+      const assay = document.querySelector('#purityInput');
+      const description = document.querySelector('#descriptionInput');
+      if (weight) weight.value = '';
+      if (assay) assay.value = '';
+      if (description) description.value = '';
+      weight?.focus();
+    });
+  }, 0);
 })();
