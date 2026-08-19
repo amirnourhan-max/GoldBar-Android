@@ -1,3 +1,4 @@
+using System.IO;
 using System.Security.Cryptography;
 using System.Text.Json;
 
@@ -5,7 +6,7 @@ namespace GoldBar.Windows.Core;
 
 public sealed class CredentialStore
 {
-    private const int Iterations = 210_000;
+    private const int DefaultIterations = 210_000;
     private const int SaltSize = 16;
     private const int HashSize = 32;
     private readonly string _path;
@@ -16,7 +17,7 @@ public sealed class CredentialStore
         public string Username { get; set; } = string.Empty;
         public string Salt { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
-        public int Iterations { get; set; } = Iterations;
+        public int Iterations { get; set; } = DefaultIterations;
         public int Version { get; set; } = 1;
     }
 
@@ -55,13 +56,13 @@ public sealed class CredentialStore
         if (password.Length > 128) throw new ArgumentException("رمز عبور بیش از حد طولانی است.");
 
         var salt = RandomNumberGenerator.GetBytes(SaltSize);
-        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, Iterations, HashAlgorithmName.SHA256, HashSize);
+        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, DefaultIterations, HashAlgorithmName.SHA256, HashSize);
         var file = new CredentialFile
         {
             Username = username,
             Salt = Convert.ToBase64String(salt),
             PasswordHash = Convert.ToBase64String(hash),
-            Iterations = Iterations,
+            Iterations = DefaultIterations,
             Version = 1
         };
 
