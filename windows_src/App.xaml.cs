@@ -16,7 +16,8 @@ public partial class App : Application
             return;
         }
 
-        var window = new MainWindow();
+        var uiSelfTest = e.Args.Any(a => string.Equals(a, "--ui-self-test", StringComparison.OrdinalIgnoreCase));
+        var window = new MainWindow(uiSelfTest);
         MainWindow = window;
         window.Show();
     }
