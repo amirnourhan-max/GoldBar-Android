@@ -17,6 +17,23 @@ public partial class App : Application
         }
 
         var uiSelfTest = e.Args.Any(a => string.Equals(a, "--ui-self-test", StringComparison.OrdinalIgnoreCase));
+        if (uiSelfTest)
+        {
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(20));
+                try
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        Console.Error.WriteLine("UI-SELF-TEST: WATCHDOG TIMEOUT");
+                        Shutdown(2);
+                    });
+                }
+                catch { }
+            });
+        }
+
         var window = new MainWindow(uiSelfTest);
         MainWindow = window;
         window.Show();
