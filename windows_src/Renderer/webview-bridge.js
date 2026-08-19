@@ -13,11 +13,23 @@
     }
   }
 
+  function loadR12() {
+    if (document.querySelector('script[data-goldbar-r12]')) return;
+    const script = document.createElement('script');
+    script.src = 'r12.js';
+    script.dataset.goldbarR12 = '1';
+    document.body.appendChild(script);
+  }
+
   function loadR3() {
-    if (document.querySelector('script[data-goldbar-r3]')) return;
+    if (document.querySelector('script[data-goldbar-r3]')) {
+      setTimeout(loadR12, 0);
+      return;
+    }
     const script = document.createElement('script');
     script.src = 'r3.js';
     script.dataset.goldbarR3 = '1';
+    script.onload = () => setTimeout(loadR12, 0);
     document.body.appendChild(script);
   }
 
