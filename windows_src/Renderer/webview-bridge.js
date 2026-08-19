@@ -1,6 +1,18 @@
 (() => {
   'use strict';
-  if (!window.chrome?.webview) return;
+
+  function loadEnhancements() {
+    if (document.querySelector('script[data-goldbar-enhancements]')) return;
+    const script = document.createElement('script');
+    script.src = 'enhancements.js';
+    script.dataset.goldbarEnhancements = '1';
+    document.body.appendChild(script);
+  }
+
+  if (!window.chrome?.webview) {
+    window.addEventListener('DOMContentLoaded', () => setTimeout(loadEnhancements, 0), { once: true });
+    return;
+  }
 
   let seq = 0;
   const pending = new Map();
@@ -62,17 +74,19 @@
   // clears the quick-entry fields and can never delete saved melt records.
   setTimeout(() => {
     const oldButton = document.querySelector('#quickClearAll');
-    if (!oldButton || !oldButton.parentNode) return;
-    const button = oldButton.cloneNode(true);
-    oldButton.parentNode.replaceChild(button, oldButton);
-    button.addEventListener('click', () => {
-      const weight = document.querySelector('#weightInput');
-      const assay = document.querySelector('#purityInput');
-      const description = document.querySelector('#descriptionInput');
-      if (weight) weight.value = '';
-      if (assay) assay.value = '';
-      if (description) description.value = '';
-      weight?.focus();
-    });
+    if (oldButton?.parentNode) {
+      const button = oldButton.cloneNode(true);
+      oldButton.parentNode.replaceChild(button, oldButton);
+      button.addEventListener('click', () => {
+        const weight = document.querySelector('#weightInput');
+        const assay = document.querySelector('#purityInput');
+        const description = document.querySelector('#descriptionInput');
+        if (weight) weight.value = '';
+        if (assay) assay.value = '';
+        if (description) description.value = '';
+        weight?.focus();
+      });
+    }
+    loadEnhancements();
   }, 0);
 })();
