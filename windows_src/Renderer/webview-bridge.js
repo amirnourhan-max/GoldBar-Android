@@ -1,6 +1,8 @@
 (() => {
   'use strict';
 
+  let weightCaptureRequested = false;
+
   function finalizeNumericSettingsInputs() {
     for (const id of ['readInterval', 'decimals']) {
       const input = document.getElementById(id);
@@ -11,12 +13,26 @@
     }
   }
 
+  function loadR3() {
+    if (document.querySelector('script[data-goldbar-r3]')) return;
+    const script = document.createElement('script');
+    script.src = 'r3.js';
+    script.dataset.goldbarR3 = '1';
+    document.body.appendChild(script);
+  }
+
   function loadEnhancements() {
-    if (document.querySelector('script[data-goldbar-enhancements]')) return;
+    if (document.querySelector('script[data-goldbar-enhancements]')) {
+      setTimeout(loadR3, 0);
+      return;
+    }
     const script = document.createElement('script');
     script.src = 'enhancements.js';
     script.dataset.goldbarEnhancements = '1';
-    script.onload = finalizeNumericSettingsInputs;
+    script.onload = () => {
+      finalizeNumericSettingsInputs();
+      loadR3();
+    };
     document.body.appendChild(script);
   }
 
@@ -73,6 +89,25 @@
     listeners.get(event).add(callback);
   }
 
+  function dispatchHostEvent(name, data) {
+    const quickWeight = document.querySelector('#weightInput');
+    const previousQuickWeight = quickWeight?.value ?? '';
+    const capture = name === 'scale:weight' && weightCaptureRequested;
+
+    listeners.get(name)?.forEach(cb => {
+      try { cb(data); } catch (e) { console.error(e); }
+    });
+
+    if (name === 'scale:weight') {
+      if (!capture && quickWeight) quickWeight.value = previousQuickWeight;
+      weightCaptureRequested = false;
+      if (capture) {
+        quickWeight?.focus();
+        quickWeight?.select?.();
+      }
+    }
+  }
+
   window.chrome.webview.addEventListener('message', event => {
     const msg = event.data;
     if (!msg || typeof msg !== 'object') return;
@@ -83,25 +118,44 @@
       msg.ok === false ? p.reject(new Error(msg.error || 'Host error')) : p.resolve(msg.data);
       return;
     }
-    if (msg.kind === 'event') {
-      listeners.get(msg.event)?.forEach(cb => {
-        try { cb(msg.data); } catch (e) { console.error(e); }
-      });
-    }
+    if (msg.kind === 'event') dispatchHostEvent(msg.event, msg.data);
   });
+
+  async function captureScale() {
+    weightCaptureRequested = true;
+    try {
+      const result = await request('scale:read');
+      if (result?.ok === false) weightCaptureRequested = false;
+      return result;
+    } catch (error) {
+      weightCaptureRequested = false;
+      throw error;
+    }
+  }
 
   window.goldbar = {
     minimize: () => request('window:minimize'),
     maximizeToggle: () => request('window:maximizeToggle'),
+    dragWindow: () => request('window:drag'),
     close: () => request('window:close'),
     getSettings: () => request('settings:get'),
     saveSettings: settings => request('settings:save', settings),
     resetSettings: () => request('settings:reset'),
+    listScalePorts: () => request('scale:listPorts'),
     connectScale: () => request('scale:connect'),
     disconnectScale: () => request('scale:disconnect'),
     readScale: () => request('scale:read'),
+    captureScale,
+    chooseReportDirectory: () => request('report:chooseDirectory'),
+    saveReport: report => request('report:save', report),
     onWeight: cb => on('scale:weight', cb),
     onScaleStatus: cb => on('scale:status', cb),
     onScaleError: cb => on('scale:error', cb)
   };
+
+  // Deterministic bridge hooks used only by the Windows UI regression test.
+  window.__goldbarBridgeArmCapture = () => { weightCaptureRequested = true; };
+  window.__goldbarBridgeTestWeight = value => dispatchHostEvent('scale:weight', {
+    value: Number(value), raw: 'SELF-TEST', decimals: 3
+  });
 })();
