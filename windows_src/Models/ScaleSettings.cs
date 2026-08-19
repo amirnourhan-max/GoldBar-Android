@@ -4,6 +4,7 @@ namespace GoldBar.Windows.Models;
 
 public sealed class ScaleSettings
 {
+    public string ScaleName { get; set; } = "ترازو";
     public string Port { get; set; } = "COM4";
     public int BaudRate { get; set; } = 2400;
     public int DataBits { get; set; } = 7;
@@ -29,6 +30,8 @@ public sealed class ScaleSettings
 
     public ScaleSettings Normalize()
     {
+        ScaleName = string.IsNullOrWhiteSpace(ScaleName) ? "ترازو" : ScaleName.Trim();
+        if (ScaleName.Length > 60) ScaleName = ScaleName[..60];
         Port = string.IsNullOrWhiteSpace(Port) ? "COM4" : Port.Trim();
         BaudRate = Math.Clamp(BaudRate, 300, 921600);
         DataBits = DataBits is 5 or 6 or 7 or 8 ? DataBits : 7;
