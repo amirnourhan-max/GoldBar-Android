@@ -11,37 +11,39 @@ public sealed record ScaleReading(double Value, string Raw, string Source, long 
 public sealed record ScaleTestResult(bool Ok, double? Weight, string Message, string Raw = "", long LatencyMs = 0);
 
 /// <summary>
-/// Production serial engine for the workshop scale. SerialPort has one owner,
-/// reads are asynchronous, writes are serialized, packets are framed safely,
-/// and manual reads always wait for a fresh response rather than stale buffered data.
+/// Serial engine for the workshop scale.
+/// Uses only SerialPort's own buffered API for receive/write operations so data is never
+/// split between SerialPort's internal buffer and BaseStream. Manual/test requests clear
+/// stale input, are correlated to a fresh response, and auto polling cannot interleave a
+/// second command while an operator request is waiting.
 /// </summary>
 public sealed class ScaleService : IDisposable
 {
-    private const int ReadBufferSize = 256;
     private static readonly TimeSpan PendingLifetime = TimeSpan.FromSeconds(3);
-
-    private sealed record PendingRead(string Source, DateTimeOffset SentAt, TaskCompletionSource<ScaleReading>? Completion);
-
     private readonly SemaphoreSlim _stateGate = new(1, 1);
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly object _decoderGate = new();
     private readonly object _pendingGate = new();
     private readonly ScaleFrameDecoder _decoder = new();
-    private readonly List<PendingRead> _pending = [];
 
     private SerialPort? _port;
-    private CancellationTokenSource? _readCts;
-    private Task? _readTask;
     private CancellationTokenSource? _autoCts;
     private Task? _autoTask;
+    private PendingRead? _pending;
     private ScaleSettings _settings = ScaleSettings.Defaults();
     private long _sequence;
     private int _idleGeneration;
     private bool _disposed;
+    private DateTimeOffset _lastBytesAt = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastInvalidFrameAt = DateTimeOffset.MinValue;
+    private string _lastInvalidFrame = string.Empty;
 
-    // Compatibility event used by the current WebView host.
+    private sealed record PendingRead(
+        string Source,
+        DateTimeOffset SentAt,
+        TaskCompletionSource<ScaleReading>? Completion);
+
     public event Action<double, string>? WeightReceived;
-    // Rich event retained for diagnostics/future UI without changing the old bridge contract.
     public event Action<ScaleReading>? ReadingReceived;
     public event Action<bool, string>? StatusChanged;
     public event Action<string>? Error;
@@ -64,27 +66,25 @@ public sealed class ScaleService : IDisposable
                 return true;
             }
 
-            await DisconnectCoreAsync(false).ConfigureAwait(false);
+            DisconnectCore(notify: false);
             LastError = string.Empty;
             _settings = target;
 
             var port = CreatePort(target);
-            _port = port; // assign before Open so any Open failure is still disposed by catch cleanup
+            _port = port;
+            port.DataReceived += OnDataReceived;
             port.ErrorReceived += OnErrorReceived;
             port.Open();
 
             ResetReceiveState();
-            _readCts = new CancellationTokenSource();
-            _readTask = ReadLoopAsync(port, _readCts.Token);
             RestartAutoLoop();
-
             StatusChanged?.Invoke(true, $"متصل به {target.ScaleName} روی {target.Port}");
             return true;
         }
         catch (Exception ex)
         {
             LastError = DescribeException(ex, target.Port);
-            await DisconnectCoreAsync(false).ConfigureAwait(false);
+            DisconnectCore(notify: false);
             StatusChanged?.Invoke(false, LastError);
             Error?.Invoke(LastError);
             return false;
@@ -102,21 +102,18 @@ public sealed class ScaleService : IDisposable
         RestartAutoLoop();
     }
 
-    /// <summary>
-    /// Operator-triggered read. It clears stale receive bytes and waits for the next
-    /// valid scale frame, preventing an old auto-poll response from being captured.
-    /// </summary>
     public async Task<bool> RequestWeightAsync()
     {
-        var result = await ReadOnceAsync("manual", 1500, clearStale: true).ConfigureAwait(false);
+        var result = await ReadOnceAsync("manual", timeoutMs: 1400, retryOnce: true).ConfigureAwait(false);
         return result.Ok;
     }
 
-    public async Task<ScaleTestResult> TestAsync(ScaleSettings settings, int timeoutMs = 1500)
+    public async Task<ScaleTestResult> TestAsync(ScaleSettings settings, int timeoutMs = 1400)
     {
         ThrowIfDisposed();
         var target = settings.Normalize();
-        if (!SerialPort.GetPortNames().Any(x => string.Equals(x, target.Port, StringComparison.OrdinalIgnoreCase)))
+        var available = SerialPort.GetPortNames();
+        if (!available.Any(x => string.Equals(x, target.Port, StringComparison.OrdinalIgnoreCase)))
         {
             return new ScaleTestResult(false, null,
                 $"پورت {target.Port} در ویندوز پیدا نشد. کابل، تبدیل USB/Serial، درایور و شماره COM را بررسی کنید.");
@@ -125,8 +122,10 @@ public sealed class ScaleService : IDisposable
         if (!IsConnected || !SerialConfigEquals(_settings, target))
         {
             if (!await ConnectAsync(target).ConfigureAwait(false))
+            {
                 return new ScaleTestResult(false, null,
                     string.IsNullOrWhiteSpace(LastError) ? "اتصال به ترازو ناموفق بود." : LastError);
+            }
         }
         else
         {
@@ -134,7 +133,7 @@ public sealed class ScaleService : IDisposable
             RestartAutoLoop();
         }
 
-        return await ReadOnceAsync("test", Math.Clamp(timeoutMs, 500, 5000), clearStale: true)
+        return await ReadOnceAsync("test", Math.Clamp(timeoutMs, 500, 5000), retryOnce: true)
             .ConfigureAwait(false);
     }
 
@@ -144,7 +143,7 @@ public sealed class ScaleService : IDisposable
         await _stateGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await DisconnectCoreAsync(true).ConfigureAwait(false);
+            DisconnectCore(notify: true);
         }
         finally
         {
@@ -154,7 +153,7 @@ public sealed class ScaleService : IDisposable
 
     public void Disconnect() => DisconnectAsync().GetAwaiter().GetResult();
 
-    private async Task<ScaleTestResult> ReadOnceAsync(string source, int timeoutMs, bool clearStale)
+    private async Task<ScaleTestResult> ReadOnceAsync(string source, int timeoutMs, bool retryOnce)
     {
         if (_port?.IsOpen != true)
         {
@@ -162,50 +161,68 @@ public sealed class ScaleService : IDisposable
             return new ScaleTestResult(false, null, LastError);
         }
 
-        var completion = new TaskCompletionSource<ScaleReading>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var sw = Stopwatch.StartNew();
-        try
-        {
-            if (!await SendRequestAsync(source, completion, clearStale).ConfigureAwait(false))
-                return new ScaleTestResult(false, null, LastError);
+        var attempts = retryOnce ? 2 : 1;
+        var total = Stopwatch.StartNew();
+        DateTimeOffset firstSentAt = DateTimeOffset.UtcNow;
 
-            var reading = await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs)).ConfigureAwait(false);
-            sw.Stop();
-            return new ScaleTestResult(
-                true,
-                reading.Value,
-                $"ترازو پاسخ داد: {reading.Value:0.######} g ({sw.ElapsedMilliseconds} ms)",
-                reading.Raw,
-                sw.ElapsedMilliseconds);
-        }
-        catch (TimeoutException)
+        for (var attempt = 1; attempt <= attempts; attempt++)
         {
-            RemovePending(completion);
-            sw.Stop();
-            LastError =
-                $"اتصال به {_settings.Port} برقرار است اما در {timeoutMs} ms پاسخ معتبر دریافت نشد. " +
-                $"تنظیمات: {_settings.BaudRate} baud, {_settings.DataBits} data bits, {_settings.Parity} parity, " +
-                $"{_settings.StopBits} stop bits, فرمان «{_settings.RequestCommand}».";
-            return new ScaleTestResult(false, null, LastError, "", sw.ElapsedMilliseconds);
+            var completion = new TaskCompletionSource<ScaleReading>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var sentAt = DateTimeOffset.UtcNow;
+            if (attempt == 1) firstSentAt = sentAt;
+
+            if (!await SendRequestAsync(source, completion, clearStale: true, skipIfPending: false)
+                    .ConfigureAwait(false))
+            {
+                return new ScaleTestResult(false, null, LastError, "", total.ElapsedMilliseconds);
+            }
+
+            try
+            {
+                var reading = await completion.Task
+                    .WaitAsync(TimeSpan.FromMilliseconds(timeoutMs))
+                    .ConfigureAwait(false);
+                total.Stop();
+                return new ScaleTestResult(
+                    true,
+                    reading.Value,
+                    $"ترازو پاسخ داد: {reading.Value:0.######} g ({total.ElapsedMilliseconds} ms)",
+                    reading.Raw,
+                    total.ElapsedMilliseconds);
+            }
+            catch (TimeoutException)
+            {
+                RemovePending(completion);
+                if (attempt < attempts)
+                {
+                    await Task.Delay(80).ConfigureAwait(false);
+                    continue;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                RemovePending(completion);
+                return new ScaleTestResult(false, null, "خواندن ترازو لغو شد.", "", total.ElapsedMilliseconds);
+            }
+            catch (Exception ex)
+            {
+                RemovePending(completion);
+                LastError = DescribeException(ex, _settings.Port);
+                Error?.Invoke(LastError);
+                return new ScaleTestResult(false, null, LastError, "", total.ElapsedMilliseconds);
+            }
         }
-        catch (OperationCanceledException)
-        {
-            RemovePending(completion);
-            return new ScaleTestResult(false, null, "خواندن ترازو لغو شد.");
-        }
-        catch (Exception ex)
-        {
-            RemovePending(completion);
-            LastError = DescribeException(ex, _settings.Port);
-            Error?.Invoke(LastError);
-            return new ScaleTestResult(false, null, LastError);
-        }
+
+        total.Stop();
+        LastError = BuildTimeoutMessage(firstSentAt, timeoutMs, attempts);
+        return new ScaleTestResult(false, null, LastError, _lastInvalidFrame, total.ElapsedMilliseconds);
     }
 
     private async Task<bool> SendRequestAsync(
         string source,
         TaskCompletionSource<ScaleReading>? completion,
-        bool clearStale)
+        bool clearStale,
+        bool skipIfPending)
     {
         var port = _port;
         if (port?.IsOpen != true)
@@ -215,52 +232,37 @@ public sealed class ScaleService : IDisposable
         }
 
         await _writeGate.WaitAsync().ConfigureAwait(false);
-        PendingRead? request = null;
         try
         {
+            if (skipIfPending && HasLivePending()) return false;
+
             if (clearStale)
             {
-                ClearPending(cancelWaiters: true);
-                lock (_decoderGate)
-                {
-                    _decoder.Reset();
-                    Interlocked.Increment(ref _idleGeneration);
-                }
-
-                // The driver buffer can contain a late response from a previous auto poll.
-                // Clearing it here makes a keyboard/button read genuinely fresh.
-                try { port.DiscardInBuffer(); }
-                catch (Exception ex) when (ex is IOException or InvalidOperationException) { }
+                CancelPending();
+                ResetDecoder();
+                try { port.DiscardInBuffer(); } catch (Exception ex) when (ex is IOException or InvalidOperationException) { }
             }
 
-            request = new PendingRead(source, DateTimeOffset.UtcNow, completion);
+            var pending = new PendingRead(source, DateTimeOffset.UtcNow, completion);
             lock (_pendingGate)
             {
-                PurgeExpiredLocked();
-                _pending.Add(request);
+                PurgeExpiredPendingLocked();
+                if (skipIfPending && _pending is not null) return false;
+                _pending = pending;
             }
 
             var command = _settings.RequestCommand ?? string.Empty;
             if (command.Length > 0)
             {
-                var bytes = Encoding.ASCII.GetBytes(command);
-                using var writeTimeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(750));
-                await port.BaseStream.WriteAsync(bytes.AsMemory(), writeTimeout.Token).ConfigureAwait(false);
+                // Use SerialPort.Write rather than BaseStream so receive/write traffic stays
+                // inside the same SerialPort buffering abstraction.
+                port.Write(command);
             }
-            // Empty command means a streaming scale; the next incoming valid frame
-            // completes a manual/test request without transmitting anything.
             return true;
-        }
-        catch (OperationCanceledException)
-        {
-            if (request is not null) RemovePending(request);
-            LastError = $"ارسال فرمان به {_settings.Port} بیش از حد طول کشید.";
-            Error?.Invoke(LastError);
-            return false;
         }
         catch (Exception ex)
         {
-            if (request is not null) RemovePending(request);
+            if (completion is not null) RemovePending(completion);
             LastError = DescribeException(ex, _settings.Port);
             Error?.Invoke(LastError);
             return false;
@@ -271,51 +273,45 @@ public sealed class ScaleService : IDisposable
         }
     }
 
-    private async Task ReadLoopAsync(SerialPort port, CancellationToken ct)
+    private void OnDataReceived(object sender, SerialDataReceivedEventArgs e)
     {
-        var bytes = new byte[ReadBufferSize];
         try
         {
-            while (!ct.IsCancellationRequested && ReferenceEquals(_port, port) && port.IsOpen)
+            if (sender is not SerialPort port || !ReferenceEquals(port, _port) || !port.IsOpen) return;
+
+            // ReadExisting drains SerialPort's own internal receive buffer. This is
+            // intentionally not mixed with BaseStream reads.
+            var chunk = port.ReadExisting();
+            if (string.IsNullOrEmpty(chunk)) return;
+
+            _lastBytesAt = DateTimeOffset.UtcNow;
+            var bytes = Encoding.ASCII.GetBytes(chunk);
+            IReadOnlyList<string> frames;
+            bool hasPartial;
+            int generation;
+            lock (_decoderGate)
             {
-                var count = await port.BaseStream.ReadAsync(bytes.AsMemory(), ct).ConfigureAwait(false);
-                if (count > 0) ProcessIncomingBytes(bytes.AsSpan(0, count), ct);
+                frames = _decoder.Push(bytes);
+                hasPartial = _decoder.HasBufferedData;
+                generation = Interlocked.Increment(ref _idleGeneration);
             }
+
+            foreach (var frame in frames) ProcessFrame(frame);
+            if (hasPartial)
+                _ = FlushIdleAsync(generation, FrameIdleMs(_settings));
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
-        catch (ObjectDisposedException) when (ct.IsCancellationRequested || !port.IsOpen) { }
-        catch (InvalidOperationException) when (ct.IsCancellationRequested || !port.IsOpen) { }
-        catch (IOException) when (ct.IsCancellationRequested || !port.IsOpen) { }
         catch (Exception ex)
         {
             LastError = DescribeException(ex, _settings.Port);
             Error?.Invoke(LastError);
-            StatusChanged?.Invoke(false, LastError);
         }
     }
 
-    private void ProcessIncomingBytes(ReadOnlySpan<byte> bytes, CancellationToken ct)
-    {
-        IReadOnlyList<string> frames;
-        bool partial;
-        int generation;
-        lock (_decoderGate)
-        {
-            frames = _decoder.Push(bytes);
-            partial = _decoder.HasBufferedData;
-            generation = Interlocked.Increment(ref _idleGeneration);
-        }
-
-        foreach (var frame in frames) ProcessFrame(frame);
-        if (partial)
-            _ = FlushIdleAsync(generation, FrameIdleMs(_settings), ct);
-    }
-
-    private async Task FlushIdleAsync(int generation, int delayMs, CancellationToken ct)
+    private async Task FlushIdleAsync(int generation, int delayMs)
     {
         try
         {
-            await Task.Delay(delayMs, ct).ConfigureAwait(false);
+            await Task.Delay(delayMs).ConfigureAwait(false);
             if (generation != Volatile.Read(ref _idleGeneration)) return;
 
             string? frame;
@@ -325,25 +321,28 @@ public sealed class ScaleService : IDisposable
                 frame = _decoder.FlushIdle();
                 if (frame is not null) Interlocked.Increment(ref _idleGeneration);
             }
+
             if (frame is not null) ProcessFrame(frame);
         }
-        catch (OperationCanceledException) { }
+        catch { }
     }
 
     private void ProcessFrame(string raw)
     {
         var value = WeightParser.Parse(raw, _settings.Decimals);
-        if (value is null) return;
+        if (value is null)
+        {
+            _lastInvalidFrameAt = DateTimeOffset.UtcNow;
+            _lastInvalidFrame = raw.Length > 160 ? raw[..160] : raw;
+            return;
+        }
 
-        PendingRead? request = null;
+        PendingRead? request;
         lock (_pendingGate)
         {
-            PurgeExpiredLocked();
-            if (_pending.Count > 0)
-            {
-                request = _pending[0];
-                _pending.RemoveAt(0);
-            }
+            PurgeExpiredPendingLocked();
+            request = _pending;
+            _pending = null;
         }
 
         var reading = new ScaleReading(
@@ -363,14 +362,13 @@ public sealed class ScaleService : IDisposable
     {
         try
         {
-            if (string.IsNullOrEmpty(_settings.RequestCommand)) return;
-
             using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_settings.ReadIntervalMs));
             while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
             {
                 if (_port?.IsOpen != true) return;
-                if (HasPending("manual") || HasPending("test") || HasPending("auto")) continue;
-                await SendRequestAsync("auto", completion: null, clearStale: false).ConfigureAwait(false);
+                if (string.IsNullOrEmpty(_settings.RequestCommand)) continue;
+                await SendRequestAsync("auto", null, clearStale: false, skipIfPending: true)
+                    .ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) { }
@@ -394,48 +392,98 @@ public sealed class ScaleService : IDisposable
         _autoTask = AutoLoopAsync(_autoCts.Token);
     }
 
-    private async Task DisconnectCoreAsync(bool notify)
+    private void DisconnectCore(bool notify)
     {
         var autoCts = _autoCts;
-        var autoTask = _autoTask;
         _autoCts = null;
         _autoTask = null;
         try { autoCts?.Cancel(); } catch { }
-
-        var readCts = _readCts;
-        var readTask = _readTask;
-        _readCts = null;
-        _readTask = null;
-        try { readCts?.Cancel(); } catch { }
+        autoCts?.Dispose();
 
         var port = _port;
         _port = null;
         if (port is not null)
         {
+            try { port.DataReceived -= OnDataReceived; } catch { }
             try { port.ErrorReceived -= OnErrorReceived; } catch { }
             try { if (port.IsOpen) port.Close(); } catch { }
             try { port.Dispose(); } catch { }
         }
 
-        if (autoTask is not null)
-            try { await autoTask.WaitAsync(TimeSpan.FromMilliseconds(300)).ConfigureAwait(false); } catch { }
-        if (readTask is not null)
-            try { await readTask.WaitAsync(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false); } catch { }
-
-        autoCts?.Dispose();
-        readCts?.Dispose();
         ResetReceiveState();
         if (notify) StatusChanged?.Invoke(false, "قطع");
     }
 
     private void ResetReceiveState()
     {
+        ResetDecoder();
+        CancelPending();
+        _lastBytesAt = DateTimeOffset.MinValue;
+        _lastInvalidFrameAt = DateTimeOffset.MinValue;
+        _lastInvalidFrame = string.Empty;
+    }
+
+    private void ResetDecoder()
+    {
         lock (_decoderGate)
         {
             _decoder.Reset();
             Interlocked.Increment(ref _idleGeneration);
         }
-        ClearPending(cancelWaiters: true);
+    }
+
+    private bool HasLivePending()
+    {
+        lock (_pendingGate)
+        {
+            PurgeExpiredPendingLocked();
+            return _pending is not null;
+        }
+    }
+
+    private void PurgeExpiredPendingLocked()
+    {
+        if (_pending is null) return;
+        if (DateTimeOffset.UtcNow - _pending.SentAt <= PendingLifetime) return;
+        _pending.Completion?.TrySetException(new TimeoutException("Scale response expired."));
+        _pending = null;
+    }
+
+    private void CancelPending()
+    {
+        lock (_pendingGate)
+        {
+            _pending?.Completion?.TrySetCanceled();
+            _pending = null;
+        }
+    }
+
+    private void RemovePending(TaskCompletionSource<ScaleReading> completion)
+    {
+        lock (_pendingGate)
+        {
+            if (_pending is not null && ReferenceEquals(_pending.Completion, completion))
+                _pending = null;
+        }
+    }
+
+    private string BuildTimeoutMessage(DateTimeOffset sentAt, int timeoutMs, int attempts)
+    {
+        if (_lastInvalidFrameAt >= sentAt && !string.IsNullOrWhiteSpace(_lastInvalidFrame))
+        {
+            return $"ارتباط با {_settings.Port} برقرار است و داده دریافت شد، اما وزن از پاسخ ترازو قابل تشخیص نبود. " +
+                   $"آخرین پاسخ: «{_lastInvalidFrame}». تنظیمات Serial و قالب خروجی ترازو را بررسی کنید.";
+        }
+
+        if (_lastBytesAt >= sentAt)
+        {
+            return $"ارتباط با {_settings.Port} برقرار است و داده خام دریافت شد، اما فریم کامل وزن در {attempts} تلاش تشخیص داده نشد. " +
+                   $"Baud {_settings.BaudRate}, Data {_settings.DataBits}, Parity {_settings.Parity}, Stop {_settings.StopBits}.";
+        }
+
+        return $"ارتباط با {_settings.Port} برقرار است اما ترازو در {attempts} تلاش، هر بار تا {timeoutMs} ms هیچ پاسخ معتبری نداد. " +
+               $"تنظیمات: {_settings.BaudRate} baud, {_settings.DataBits} data bits, {_settings.Parity} parity, " +
+               $"{_settings.StopBits} stop bits، فرمان «{_settings.RequestCommand}».";
     }
 
     private void OnErrorReceived(object sender, SerialErrorReceivedEventArgs e)
@@ -452,68 +500,27 @@ public sealed class ScaleService : IDisposable
         Error?.Invoke(LastError);
     }
 
-    private bool HasPending(string source)
+    private static SerialPort CreatePort(ScaleSettings s) => new(
+        s.Port,
+        s.BaudRate,
+        ParseParity(s.Parity),
+        s.DataBits,
+        ParseStopBits(s.StopBits))
     {
-        lock (_pendingGate)
-        {
-            PurgeExpiredLocked();
-            return _pending.Any(x => x.Source == source);
-        }
-    }
-
-    private void PurgeExpiredLocked()
-    {
-        var cutoff = DateTimeOffset.UtcNow - PendingLifetime;
-        for (var i = _pending.Count - 1; i >= 0; i--)
-        {
-            if (_pending[i].SentAt >= cutoff) continue;
-            _pending[i].Completion?.TrySetException(new TimeoutException("Scale response expired."));
-            _pending.RemoveAt(i);
-        }
-    }
-
-    private void ClearPending(bool cancelWaiters)
-    {
-        lock (_pendingGate)
-        {
-            if (cancelWaiters)
-            {
-                foreach (var x in _pending)
-                    x.Completion?.TrySetCanceled();
-            }
-            _pending.Clear();
-        }
-    }
-
-    private void RemovePending(TaskCompletionSource<ScaleReading> completion)
-    {
-        lock (_pendingGate)
-            _pending.RemoveAll(x => ReferenceEquals(x.Completion, completion));
-    }
-
-    private void RemovePending(PendingRead request)
-    {
-        lock (_pendingGate)
-            _pending.Remove(request);
-    }
-
-    private static SerialPort CreatePort(ScaleSettings s) =>
-        new(s.Port, s.BaudRate, ParseParity(s.Parity), s.DataBits, ParseStopBits(s.StopBits))
-        {
-            Handshake = ParseHandshake(s.FlowControl),
-            Encoding = Encoding.ASCII,
-            ReadTimeout = 1000,
-            WriteTimeout = 750,
-            NewLine = "\r\n",
-            DtrEnable = false,
-            ReadBufferSize = 4096,
-            WriteBufferSize = 2048
-        };
+        Handshake = ParseHandshake(s.FlowControl),
+        Encoding = Encoding.ASCII,
+        ReadTimeout = 250,
+        WriteTimeout = 500,
+        DtrEnable = false,
+        RtsEnable = false,
+        NewLine = "\r\n",
+        ReadBufferSize = 4096,
+        WriteBufferSize = 2048,
+        ReceivedBytesThreshold = 1
+    };
 
     private static int FrameIdleMs(ScaleSettings s)
     {
-        // Dynamic fallback for devices with no CR/LF: six character-times.
-        // For the workshop's default 2400 / 7E2 profile this is ~28 ms.
         var parityBits = s.Parity.Equals("None", StringComparison.OrdinalIgnoreCase) ? 0d : 1d;
         var bitsPerCharacter = 1d + s.DataBits + parityBits + s.StopBits;
         var charMs = 1000d * bitsPerCharacter / Math.Max(300, s.BaudRate);
@@ -533,9 +540,9 @@ public sealed class ScaleService : IDisposable
         UnauthorizedAccessException => $"پورت {port} در اختیار برنامه دیگری است یا دسترسی مجاز نیست.",
         IOException => $"ارتباط با {port} قطع یا نامعتبر است. کابل، تبدیل USB/Serial و درایور را بررسی کنید.",
         ArgumentException => $"تنظیمات پورت {port} معتبر نیست. Baud Rate، Data Bits، Parity و Stop Bits را بررسی کنید.",
-        ObjectDisposedException => $"ارتباط {port} در حین عملیات بسته شد.",
         InvalidOperationException => $"پورت {port} در وضعیت قابل استفاده نیست. اتصال را قطع و دوباره برقرار کنید.",
         TimeoutException => $"ترازو روی {port} در زمان مقرر پاسخ نداد.",
+        ObjectDisposedException => $"ارتباط {port} در حین عملیات بسته شد.",
         _ => $"خطای ترازو: {ex.Message}"
     };
 
@@ -561,8 +568,8 @@ public sealed class ScaleService : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        Disconnect();
         _disposed = true;
+        DisconnectCore(notify: false);
         _stateGate.Dispose();
         _writeGate.Dispose();
         GC.SuppressFinalize(this);
