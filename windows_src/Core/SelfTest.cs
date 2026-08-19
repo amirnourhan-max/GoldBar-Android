@@ -39,6 +39,22 @@ public static class SelfTest
             try { if (File.Exists(credentialPath)) File.Delete(credentialPath); } catch { }
         }
 
+        // Reference values taken from the original Golde Bar1-1.xlsx workbook.
+        var workbookSummary = new AssaySummary(353.11, 273852.12, 775.5433717538443, 7);
+        var increase = AssayFormulaReference.Increase(workbookSummary, 747, 995);
+        var alloy = AssayFormulaReference.Alloy(workbookSummary, 747, 45, 353.11);
+        var split = AssayFormulaReference.Split(800, 36.79, 63.21);
+        var correction = AssayFormulaReference.CorrectionForDrop(250, 750, 1);
+        Check(Math.Abs(increase.RequiredBar - (-40.6)) < 1e-9, "Workbook increase-assay formula matches -40.6 g");
+        Check(Math.Abs(alloy.TotalAlloyRequired - 13.492570281124472) < 1e-9, "Workbook total-alloy formula matches reference");
+        Check(Math.Abs(alloy.SilverRequired - 6.071656626506012) < 1e-9, "Workbook silver formula matches reference");
+        Check(Math.Abs(alloy.NonSilverRequired - 7.4209136546184595) < 1e-9, "Workbook non-silver formula matches reference");
+        Check(Math.Abs(alloy.FourPerThousand - 1.4124400000000001) < 1e-9, "Workbook 0.4-percent formula matches reference");
+        Check(Math.Abs(alloy.FinalOtherAlloy - 6.008473654618459) < 1e-9, "Workbook final-other-alloy formula matches reference");
+        Check(Math.Abs(split.Gold995 - 294.32) < 1e-9 && Math.Abs(split.Gold750 - 505.68) < 1e-9,
+            "Workbook 36.79/63.21 split matches reference");
+        Check(Math.Abs(correction - 0.33377837116154296) < 1e-9, "Workbook assay-drop correction matches reference");
+
         Check(WeightParser.Parse("ST,+ 214.373 g", 3) == 214.373, "WeightParser parses scale payload");
         Check(WeightParser.Parse("WT=102,500", 3) == 102.5, "WeightParser accepts comma decimal");
         Check(WeightParser.Parse("garbage", 3) is null, "WeightParser rejects nonnumeric payload");
