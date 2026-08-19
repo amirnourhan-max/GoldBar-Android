@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace GoldBar.Windows.Models;
 
 public sealed class ScaleSettings
