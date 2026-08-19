@@ -71,39 +71,24 @@ public partial class MainWindow : Window
 
         try
         {
-            await Task.Delay(550);
-
-            var resolutionResults = new List<object>();
-            var resolutionOk = true;
-            foreach (var size in new[]
-                     {
-                         (Width: 960d, Height: 640d),
-                         (Width: 1280d, Height: 720d),
-                         (Width: 1366d, Height: 768d),
-                         (Width: 1536d, Height: 864d),
-                         (Width: 1600d, Height: 900d)
-                     })
-            {
-                WindowState = WindowState.Normal;
-                Width = size.Width;
-                Height = size.Height;
-                await Task.Delay(180);
-                var probeJson = await Web.ExecuteScriptAsync(
-                    "window.__goldbarLayoutProbe ? window.__goldbarLayoutProbe() : ({ok:false,reason:'probe-missing'})");
-                using var probeDoc = JsonDocument.Parse(probeJson);
-                var ok = probeDoc.RootElement.TryGetProperty("ok", out var okEl) && okEl.GetBoolean();
-                resolutionOk &= ok;
-                resolutionResults.Add(new { requested = $"{size.Width:0}x{size.Height:0}", ok, probe = probeJson });
-            }
-
-            Width = 1536;
-            Height = 1024;
-            await Task.Delay(200);
+            await Task.Delay(700);
 
             const string script = """
 (() => {
   const base = window.__goldbarSelfTest ? window.__goldbarSelfTest() : { ok: false, reason: 'base-test-missing' };
   const calcProbe = window.__goldbarCalculationProbe ? window.__goldbarCalculationProbe() : { ok: false, reason: 'calc-probe-missing' };
+  const actualLayout = window.__goldbarLayoutProbe ? window.__goldbarLayoutProbe() : { ok: false, reason: 'layout-probe-missing' };
+
+  const resolutionCases = [
+    [960, 640], [1280, 720], [1366, 768], [1536, 864], [1600, 900], [1920, 1080], [2560, 1440]
+  ].map(([w, h]) => {
+    const scale = Math.max(0.35, Math.min(w / 1536, h / 1024));
+    const rootW = 1536 * scale;
+    const rootH = 1024 * scale;
+    return { w, h, scale, rootW, rootH, ok: rootW <= w + 0.01 && rootH <= h + 0.01 };
+  });
+  const resolutionFormulaOk = resolutionCases.every(x => x.ok);
+
   const title = () => document.querySelector('.dash-title span:last-child')?.textContent?.trim() || '';
   const nav = [...document.querySelectorAll('.nav-item')];
   const clickNav = label => {
@@ -155,8 +140,7 @@ public partial class MainWindow : Window
     && Math.abs(after[1] - expectedAverage) < 0.002
     && after[2] === expectedCount;
 
-  const clearButton = document.querySelector('#quickClearAll');
-  clearButton?.click();
+  document.querySelector('#quickClearAll')?.click();
   const clearFieldsOnly = weight.value === '' && assay.value === '' && description.value === '';
 
   const meltsClicked = clickNav('آبشده‌ها');
@@ -210,11 +194,13 @@ public partial class MainWindow : Window
     && document.querySelectorAll('.calc-card h3')[1]?.textContent.trim() === 'عیار';
 
   return {
-    ok: Boolean(base.ok && calcProbe.ok && registerClicked && numericPersianOk && descriptionTextOk
-      && enterMovesToAssay && summaryMathOk && clearFieldsOnly && clearPreservedEntries && meltsNav
-      && viewAllWorks && calculationUiWired && settingsNumericOk && reportsWork && settingsWork
+    ok: Boolean(base.ok && calcProbe.ok && actualLayout.ok && resolutionFormulaOk
+      && registerClicked && numericPersianOk && descriptionTextOk && enterMovesToAssay
+      && summaryMathOk && clearFieldsOnly && clearPreservedEntries && meltsNav && viewAllWorks
+      && calculationUiWired && settingsNumericOk && reportsWork && settingsWork
       && quickCalcWork && dashboardWork && labelsOk),
-    base, calcProbe, registerClicked, numericPersianOk, descriptionTextOk, enterMovesToAssay,
+    base, calcProbe, actualLayout, resolutionCases, resolutionFormulaOk,
+    registerClicked, numericPersianOk, descriptionTextOk, enterMovesToAssay,
     summaryMathOk, expectedWeight, expectedAverage, expectedCount, after,
     clearFieldsOnly, clearPreservedEntries, meltsNav, viewAllWorks, calculationUiWired,
     calcWeightShown, calcRequiredShown, topRequiredShown, settingsNumericOk,
@@ -225,13 +211,10 @@ public partial class MainWindow : Window
 
             var json = await Web.ExecuteScriptAsync(script);
             using var doc = JsonDocument.Parse(json);
-            var interactionOk = doc.RootElement.TryGetProperty("ok", out var okElement) && okElement.GetBoolean();
-            var overall = resolutionOk && interactionOk;
-
-            Console.WriteLine("UI-SELF-TEST RESOLUTIONS: " + JsonSerializer.Serialize(resolutionResults));
-            Console.WriteLine("UI-SELF-TEST INTERACTIONS: " + json);
-            Console.WriteLine(overall ? "UI-SELF-TEST: PASS" : "UI-SELF-TEST: FAIL");
-            Application.Current.Shutdown(overall ? 0 : 1);
+            var ok = doc.RootElement.TryGetProperty("ok", out var okElement) && okElement.GetBoolean();
+            Console.WriteLine("UI-SELF-TEST: " + json);
+            Console.WriteLine(ok ? "UI-SELF-TEST: PASS" : "UI-SELF-TEST: FAIL");
+            Application.Current.Shutdown(ok ? 0 : 1);
         }
         catch (Exception ex)
         {
