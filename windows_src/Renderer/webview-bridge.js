@@ -9,10 +9,35 @@
     document.body.appendChild(script);
   }
 
-  if (!window.chrome?.webview) {
-    window.addEventListener('DOMContentLoaded', () => setTimeout(loadEnhancements, 0), { once: true });
-    return;
+  function installClearOverride() {
+    const button = document.querySelector('#quickClearAll');
+    if (!button || button.dataset.clearOverride === '1') return;
+    button.dataset.clearOverride = '1';
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const weight = document.querySelector('#weightInput');
+      const assay = document.querySelector('#purityInput');
+      const description = document.querySelector('#descriptionInput');
+      if (weight) weight.value = '';
+      if (assay) assay.value = '';
+      if (description) description.value = '';
+      weight?.focus();
+    }, true);
   }
+
+  function afterDomReady() {
+    installClearOverride();
+    loadEnhancements();
+  }
+
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', afterDomReady, { once: true });
+  } else {
+    setTimeout(afterDomReady, 0);
+  }
+
+  if (!window.chrome?.webview) return;
 
   let seq = 0;
   const pending = new Map();
@@ -68,25 +93,4 @@
     onScaleStatus: cb => on('scale:status', cb),
     onScaleError: cb => on('scale:error', cb)
   };
-
-  // app.js assigns the final quick-action ids and listeners synchronously.
-  // Replace only the clear button after initialization so "پاک کردن همه"
-  // clears the quick-entry fields and can never delete saved melt records.
-  setTimeout(() => {
-    const oldButton = document.querySelector('#quickClearAll');
-    if (oldButton?.parentNode) {
-      const button = oldButton.cloneNode(true);
-      oldButton.parentNode.replaceChild(button, oldButton);
-      button.addEventListener('click', () => {
-        const weight = document.querySelector('#weightInput');
-        const assay = document.querySelector('#purityInput');
-        const description = document.querySelector('#descriptionInput');
-        if (weight) weight.value = '';
-        if (assay) assay.value = '';
-        if (description) description.value = '';
-        weight?.focus();
-      });
-    }
-    loadEnhancements();
-  }, 0);
 })();
