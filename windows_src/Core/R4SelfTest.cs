@@ -16,8 +16,9 @@ public static class R4SelfTest
             else { output.WriteLine($"FAIL: {name}"); failures.Add(name); }
         }
 
-        Check(R4WindowPolicy.StartupState(false) == WindowState.Minimized, "Normal startup is minimized");
+        Check(R4WindowPolicy.StartupState(false) == WindowState.Normal, "Normal startup is windowed, not minimized or maximized");
         Check(R4WindowPolicy.StartupState(true) == WindowState.Maximized, "UI self-test startup remains visible");
+        Check(new ScaleSettings { ScaleName = "  ترازو کارگاه  " }.Normalize().ScaleName == "ترازو کارگاه", "Scale name is persisted and normalized");
 
         var temp = Path.Combine(Path.GetTempPath(), "GoldBar-R4-SelfTest-" + Guid.NewGuid().ToString("N"));
         try
@@ -32,7 +33,7 @@ public static class R4SelfTest
             };
             var saved = new ReportService().SaveXlsx(temp, request);
             var imported = new ReportImportService().LoadXlsx(saved);
-            Check(File.Exists(saved), "Excel report is created");
+            Check(File.Exists(saved) && string.Equals(Path.GetExtension(saved), ".xlsx", StringComparison.OrdinalIgnoreCase), "Excel XLSX report is created");
             Check(imported.Entries.Count == 2, "Excel report imports all melts");
             Check(Math.Abs(imported.Entries[0].Weight - 100.125) < 0.000001 && imported.Entries[0].Assay == 750,
                 "Imported melt values match saved report");
