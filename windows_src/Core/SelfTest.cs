@@ -22,14 +22,27 @@ public static class SelfTest
 
         var median = new MedianStabilizer(3);
         median.Push(100.0); median.Push(999.0);
-        Check(Math.Abs(median.Push(101.0) - 101.0) < 0.000001, "Median stabilizer rejects spike");
+        Check(Math.Abs(median.Push(101.0) - 101.0) < 0.000001, "Median stabilizer helper rejects spike");
+
+        using (var scale = new ScaleService())
+        {
+            var diagnostic = scale.TestAsync(new ScaleSettings
+            {
+                ScaleName = "ترازوی تست",
+                Port = "COM65535",
+                AutoRead = false
+            }, 500).GetAwaiter().GetResult();
+            Check(!diagnostic.Ok && diagnostic.Message.Contains("پیدا نشد", StringComparison.Ordinal),
+                "Scale test reports a useful missing-COM diagnostic");
+        }
 
         var s = new ScaleSettings
         {
-            Port = " ", BaudRate = 50, DataBits = 99, Parity = "bad", StopBits = 9,
+            ScaleName = "  ترازو کارگاه  ", Port = " ", BaudRate = 50, DataBits = 99, Parity = "bad", StopBits = 9,
             FlowControl = "bad", ReadIntervalMs = 2, Decimals = 99, RequestCommand = null!,
             ReportDirectory = " "
         }.Normalize();
+        Check(s.ScaleName == "ترازو کارگاه", "Scale name normalizes safely");
         Check(s.Port == "COM4", "Settings default COM port");
         Check(s.BaudRate == 300 && s.DataBits == 7 && s.Parity == "Even" && s.StopBits == 2,
               "Serial settings normalize safely");
@@ -50,7 +63,8 @@ public static class SelfTest
                 ]
             };
             var path = new ReportService().SaveXlsx(reportDir, request);
-            Check(File.Exists(path) && new FileInfo(path).Length > 1000, "Report XLSX is created");
+            Check(File.Exists(path) && new FileInfo(path).Length > 1000 && string.Equals(Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase),
+                "Report is a real XLSX file");
 
             using var zip = ZipFile.OpenRead(path);
             var contentTypes = zip.GetEntry("[Content_Types].xml");
@@ -71,11 +85,17 @@ public static class SelfTest
                   sheetXml.Contains(">760<", StringComparison.Ordinal) &&
                   sheetXml.Contains("746.666", StringComparison.Ordinal),
                   "Report XLSX contains entries and weighted summary");
+
+            var imported = new ReportImportService().LoadXlsx(path);
+            Check(imported.Entries.Count == 2 &&
+                  Math.Abs(imported.Entries[0].Weight - 100) < 0.000001 && imported.Entries[0].Assay == 740 &&
+                  Math.Abs(imported.Entries[1].Weight - 50) < 0.000001 && imported.Entries[1].Assay == 760,
+                  "Saved XLSX imports back without changing melt values");
         }
         catch (Exception ex)
         {
-            output.WriteLine("FAIL: Report export exception: " + ex);
-            failures.Add("Report export exception");
+            output.WriteLine("FAIL: Report export/import exception: " + ex);
+            failures.Add("Report export/import exception");
         }
         finally
         {
