@@ -37,6 +37,7 @@
     }
   }
 
+  // Canonical workbook formula: weighted average = SUM(weight*assay) / SUM(weight).
   function summarize(list = readEntries()) {
     let weight = 0;
     let weightedSum = 0;
@@ -52,6 +53,7 @@
     return { count, weight, weightedSum, averageAssay: weight > 0 ? weightedSum / weight : NaN };
   }
 
+  // Excel ROUNDDOWN(number,digits): truncate toward zero, including negatives.
   function roundDownTowardZero(value, digits) {
     if (!Number.isFinite(value)) return NaN;
     const factor = 10 ** digits;
@@ -60,6 +62,10 @@
     return truncated / factor;
   }
 
+  // Workbook Table1:
+  // difference = castingAssay - averageAssay
+  // denominator = barAssay - castingAssay
+  // requiredBar = ROUNDDOWN(weight*difference/denominator,1)
   function requiredHighAssayBar(summary, castingAssay, barAssay) {
     if (!(summary.weight > 0) || !Number.isFinite(summary.averageAssay)) {
       return { assayDifference: NaN, denominator: NaN, requiredBar: NaN };
@@ -72,6 +78,13 @@
     return { assayDifference, denominator, requiredBar };
   }
 
+  // Workbook Table14:
+  // total alloy = weight*averageAssay/castingAssay - weight
+  // silver = silverPercent/100 * total alloy
+  // non-silver = total alloy - silver
+  // 0.4% item = GLOBAL total weight * 0.004
+  // final other = total alloy - silver - 0.4% item
+  // total after alloy = weight + total alloy
   function requiredAlloy(summary, castingAssay, silverPercent, globalWeight = summary.weight) {
     if (!(summary.weight > 0) || !Number.isFinite(summary.averageAssay) || castingAssay === 0) {
       return {
@@ -88,8 +101,43 @@
     return { totalAlloyRequired, silverRequired, nonSilverRequired, fourPerThousand, finalOtherAlloy, totalAfterAlloy };
   }
 
+  // Workbook quick tool: 36.79% / 63.21% split.
+  function split3679(base) {
+    return Number.isFinite(base) ? base * 0.3679 : NaN;
+  }
+
+  // Workbook W10 correction tool:
+  // addition = baseWeight*targetAssay/(targetAssay-assayDrop) - baseWeight
+  function correctionAddition(baseWeight, targetAssay, assayDrop) {
+    const denominator = targetAssay - assayDrop;
+    if (!Number.isFinite(baseWeight) || !Number.isFinite(targetAssay) || !Number.isFinite(assayDrop) || denominator === 0) return NaN;
+    return baseWeight * targetAssay / denominator - baseWeight;
+  }
+
   function setText(el, value) {
     if (el && el.textContent !== value) el.textContent = value;
+  }
+
+  function fixCalculationSemantics() {
+    const cards = $$('.calc-card');
+    if (cards[0]) {
+      const labels = cards[0].querySelectorAll('.two-col label');
+      if (labels[0]) labels[0].textContent = 'عیار هدف';
+      if (labels[1]) labels[1].textContent = 'عیار شمش';
+      const p = cards[0].querySelector('p');
+      if (p) p.textContent = 'محاسبه شمش عیار بالا برای رساندن آبشده‌ها به عیار هدف';
+    }
+    if (cards[1]) {
+      const labels = cards[1].querySelectorAll('.two-col label');
+      if (labels[0]) labels[0].textContent = 'عیار هدف';
+      if (labels[1]) labels[1].textContent = 'درصد نقره';
+      const inputs = cards[1].querySelectorAll('input');
+      if (inputs[1] && inputs[1].value === '10') inputs[1].value = '45';
+      const p = cards[1].querySelector('p');
+      if (p) p.textContent = 'محاسبه بار لازم برای رسیدن آبشده‌ها به عیار هدف';
+      const wideLabel = cards[1].querySelector('.wide-stat span');
+      if (wideLabel) wideLabel.textContent = 'کل بار مورد نیاز (g)';
+    }
   }
 
   function recalculateCards() {
@@ -131,10 +179,15 @@
         setText(stats[1], formatNumber(summary.weight || 0, 3));
         totalAlloy = result.totalAlloyRequired;
         setText(required, Number.isFinite(totalAlloy) ? formatNumber(totalAlloy, 3) : '0');
+        cards[1].dataset.silverRequired = Number.isFinite(result.silverRequired) ? String(result.silverRequired) : '';
+        cards[1].dataset.nonSilverRequired = Number.isFinite(result.nonSilverRequired) ? String(result.nonSilverRequired) : '';
+        cards[1].dataset.fourPerThousand = Number.isFinite(result.fourPerThousand) ? String(result.fourPerThousand) : '';
+        cards[1].dataset.finalOtherAlloy = Number.isFinite(result.finalOtherAlloy) ? String(result.finalOtherAlloy) : '';
       }
 
       const summaryCards = $$('.summary-card .metric-value');
       if (summaryCards[3]) {
+        // A negative result means no alloy addition is required; the dashboard requirement is therefore zero.
         const shown = Number.isFinite(totalAlloy) ? Math.max(0, totalAlloy) : 0;
         setText(summaryCards[3], formatNumber(shown, 3));
       }
@@ -192,6 +245,90 @@
     }
   }
 
+  function installQuickTools() {
+    const style = document.createElement('style');
+    style.textContent = `
+      .canonical-tools{display:grid;grid-template-columns:1fr 1fr;gap:18px;direction:rtl}
+      .canonical-tool{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:18px}
+      .canonical-tool h3{margin:0 0 14px;color:#f4f1e9;font-weight:800}
+      .canonical-tool label{display:block;color:#aeb4c0;font-weight:700;margin:10px 0 6px}
+      .canonical-tool input{width:100%;box-sizing:border-box;border:1px solid #3a3e40;background:#0d1012;color:#f4f1e9;border-radius:10px;padding:10px 12px;font:700 15px Tahoma,Arial,sans-serif;direction:ltr}
+      .canonical-results{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+      .canonical-result{background:rgba(255,255,255,.035);border-radius:12px;padding:12px;text-align:center}
+      .canonical-result span{display:block;color:#9ca3af;font-size:12px;margin-bottom:5px}.canonical-result b{color:#f2c45b;font-size:18px}
+    `;
+    document.head.appendChild(style);
+
+    const nav = $$('.nav-item').find(btn => (btn.textContent || '').includes('محاسبه سریع'));
+    if (!nav) return;
+    nav.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const summaryGrid = $('.summary-grid');
+      const quick = $('.quick-card');
+      const bottom = $('.bottom-grid');
+      const recent = $('.recent-card');
+      const settingsPanel = $('.settings');
+      const body = $('.workspace-body');
+      let host = $('#pageHost');
+      if (!host) {
+        host = document.createElement('section');
+        host.id = 'pageHost';
+        host.className = 'page-host';
+        $('.center')?.appendChild(host);
+      }
+      [summaryGrid, quick, bottom].forEach(el => { if (el) el.style.display = 'none'; });
+      if (recent) recent.style.display = '';
+      if (settingsPanel) settingsPanel.style.display = 'none';
+      body?.classList.add('full-center');
+      host.classList.add('active');
+      $$('.nav-item').forEach(btn => btn.classList.toggle('active', btn === nav));
+      const titleEl = $('.dash-title span:last-child');
+      const subEl = $('.workspace-header .subtitle');
+      if (titleEl) titleEl.textContent = 'محاسبه سریع';
+      if (subEl) subEl.textContent = 'ابزارهای محاسباتی مرجع اکسل';
+      host.innerHTML = `
+        <section class="page-panel"><h2>محاسبه سریع</h2>
+          <div class="canonical-tools">
+            <div class="canonical-tool">
+              <h3>تقسیم ۳۶.۷۹٪ / ۶۳.۲۱٪</h3>
+              <label>عدد پایه</label><input id="splitBaseWin" inputmode="decimal" value="800">
+              <div class="canonical-results"><div class="canonical-result"><span>۳۶.۷۹٪</span><b id="split3679Win">0</b></div><div class="canonical-result"><span>۶۳.۲۱٪</span><b id="split6321Win">0</b></div></div>
+            </div>
+            <div class="canonical-tool">
+              <h3>اصلاح وزن برای افت عیار</h3>
+              <label>وزن پایه</label><input id="corrWeightWin" inputmode="decimal" value="250">
+              <label>عیار هدف</label><input id="corrTargetWin" inputmode="numeric" value="750">
+              <label>افت عیار</label><input id="corrDropWin" inputmode="decimal" value="1">
+              <div class="canonical-results"><div class="canonical-result"><span>بار افزوده (g)</span><b id="corrAddWin">0</b></div><div class="canonical-result"><span>جمع وزن (g)</span><b id="corrTotalWin">0</b></div></div>
+            </div>
+          </div>
+        </section>`;
+      const inputs = [...host.querySelectorAll('input')];
+      const clean = input => {
+        let v = normalizeDigits(input.value).replace(/[^0-9.]/g, '');
+        const dot = v.indexOf('.');
+        if (dot >= 0) v = v.slice(0, dot + 1) + v.slice(dot + 1).replace(/\./g, '');
+        input.value = v;
+      };
+      const recalcTools = () => {
+        inputs.forEach(clean);
+        const base = parseNumber($('#splitBaseWin')?.value);
+        const part = split3679(base);
+        setText($('#split3679Win'), Number.isFinite(part) ? formatNumber(part, 3) : '0');
+        setText($('#split6321Win'), Number.isFinite(part) && Number.isFinite(base) ? formatNumber(base - part, 3) : '0');
+        const w = parseNumber($('#corrWeightWin')?.value);
+        const target = parseNumber($('#corrTargetWin')?.value);
+        const drop = parseNumber($('#corrDropWin')?.value);
+        const add = correctionAddition(w, target, drop);
+        setText($('#corrAddWin'), Number.isFinite(add) ? formatNumber(add, 3) : '0');
+        setText($('#corrTotalWin'), Number.isFinite(add) && Number.isFinite(w) ? formatNumber(w + add, 3) : '0');
+      };
+      inputs.forEach(input => input.addEventListener('input', recalcTools));
+      recalcTools();
+    }, true);
+  }
+
   function updateReleaseLabel() {
     const version = $('.version');
     if (version) version.textContent = 'GOLD BAR v2.0.0-r2';
@@ -216,6 +353,7 @@
     };
   }
 
+  // Exact regression sample from the workbook port + boundary cases.
   function calculationProbe() {
     const sample = [
       { weight: 84.38, assay: 749 }, { weight: 86.69, assay: 750 },
@@ -226,24 +364,40 @@
     const s = summarize(sample);
     const a = requiredHighAssayBar(s, 747, 995);
     const x = requiredAlloy(s, 747, 45, s.weight);
+    const split = split3679(800);
+    const correction = correctionAddition(250, 750, 1);
     const near = (v, e, eps = 1e-8) => Number.isFinite(v) && Math.abs(v - e) <= eps;
-    const ok = near(s.weight, 353.11)
-      && near(s.averageAssay, 775.5433717538444)
-      && near(a.requiredBar, -40.6)
-      && near(x.totalAlloyRequired, 13.492570281124529)
-      && near(x.silverRequired, 6.071656626506038)
-      && near(x.nonSilverRequired, 7.420913654618491)
-      && near(x.fourPerThousand, 1.41244)
-      && near(x.finalOtherAlloy, 6.0084736546184905);
-    return { ok, summary: s, adjustment: a, alloy: x };
+    const checks = {
+      totalWeight: near(s.weight, 353.11),
+      weightedAverage: near(s.averageAssay, 775.5433717538444),
+      required995Bar: near(a.requiredBar, -40.6),
+      totalAlloy: near(x.totalAlloyRequired, 13.492570281124529),
+      silver: near(x.silverRequired, 6.071656626506038),
+      nonSilver: near(x.nonSilverRequired, 7.420913654618491),
+      fourPerThousand: near(x.fourPerThousand, 1.41244),
+      finalOther: near(x.finalOtherAlloy, 6.0084736546184905),
+      totalAfterAlloy: near(x.totalAfterAlloy, 366.6025702811245),
+      split3679: near(split, 294.32),
+      split6321: near(800 - split, 505.68),
+      correctionAdd: near(correction, 0.33377837116154296),
+      correctionTotal: near(250 + correction, 250.33377837116154),
+      zeroDenominatorBar: Number.isNaN(requiredHighAssayBar(s, 747, 747).requiredBar),
+      zeroDenominatorCorrection: Number.isNaN(correctionAddition(250, 750, 750))
+    };
+    return { ok: Object.values(checks).every(Boolean), checks, summary: s, adjustment: a, alloy: x, split, correction };
   }
 
+  fixCalculationSemantics();
   bindStrictSettingsNumbers();
   bindCalculationInputs();
+  installQuickTools();
   updateReleaseLabel();
   recalculateCards();
 
   window.__goldbarLayoutProbe = layoutProbe;
   window.__goldbarCalculationProbe = calculationProbe;
   window.__goldbarRecalculate = recalculateCards;
+  window.__goldbarFormulaEngine = {
+    summarize, roundDownTowardZero, requiredHighAssayBar, requiredAlloy, split3679, correctionAddition
+  };
 })();
