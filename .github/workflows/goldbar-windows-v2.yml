@@ -49,7 +49,10 @@ jobs:
         shell: pwsh
         run: |
           $exe = Join-Path $PWD 'windows_src/publish/GoldBar.exe'
+          $result = Join-Path $env:TEMP 'goldbar-ui-self-test.json'
+          Remove-Item $result -ErrorAction SilentlyContinue
           $p = Start-Process -FilePath $exe -ArgumentList '--ui-self-test' -Wait -PassThru
+          if (Test-Path $result) { Write-Host 'UI TEST RESULT:'; Get-Content $result -Raw | Write-Host }
           if ($p.ExitCode -ne 0) { throw "GoldBar UI self-test failed with exit code $($p.ExitCode)" }
 
       - name: GUI startup smoke test
@@ -92,7 +95,10 @@ jobs:
           if (!(Test-Path $installedExe)) { throw 'Installed GoldBar.exe not found' }
           $sp = Start-Process -FilePath $installedExe -ArgumentList '--self-test' -Wait -PassThru
           if ($sp.ExitCode -ne 0) { throw "Installed executable self-test failed with exit code $($sp.ExitCode)" }
+          $result = Join-Path $env:TEMP 'goldbar-ui-self-test.json'
+          Remove-Item $result -ErrorAction SilentlyContinue
           $up = Start-Process -FilePath $installedExe -ArgumentList '--ui-self-test' -Wait -PassThru
+          if (Test-Path $result) { Write-Host 'INSTALLED UI TEST RESULT:'; Get-Content $result -Raw | Write-Host }
           if ($up.ExitCode -ne 0) { throw "Installed UI self-test failed with exit code $($up.ExitCode)" }
 
       - name: SHA256
