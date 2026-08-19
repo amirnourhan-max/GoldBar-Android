@@ -139,10 +139,11 @@
 
   function clearInput(id) {
     const el = document.getElementById(id);
-    if (!el) return;
+    if (!el) return false;
     el.value = '';
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
   }
 
   function clearBusinessDataAtStartup() {
@@ -172,12 +173,22 @@
     const title = $('.dash-title span:last-child')?.textContent?.trim() || '';
 
     if (title === 'محاسبات عیار' && sessionStorage.getItem(ASSAY_RESET_KEY) !== '1') {
-      ['r7IncreaseTarget', 'r7BarAssay', 'r7AlloyTarget', 'r7SilverPercent'].forEach(clearInput);
+      const ids = ['r7IncreaseTarget', 'r7BarAssay', 'r7AlloyTarget', 'r7SilverPercent'];
+      if (!ids.every(id => document.getElementById(id))) {
+        setTimeout(resetDynamicCalculationPageOnce, 40);
+        return;
+      }
+      ids.forEach(clearInput);
       sessionStorage.setItem(ASSAY_RESET_KEY, '1');
     }
 
     if (title === 'محاسبه سریع' && sessionStorage.getItem(QUICK_RESET_KEY) !== '1') {
-      ['splitBaseWin', 'corrWeightWin', 'corrTargetWin', 'corrDropWin', 'r7Pct995', 'r7Pct750'].forEach(clearInput);
+      const ids = ['splitBaseWin', 'corrWeightWin', 'corrTargetWin', 'corrDropWin', 'r7Pct995', 'r7Pct750'];
+      if (!ids.every(id => document.getElementById(id))) {
+        setTimeout(resetDynamicCalculationPageOnce, 40);
+        return;
+      }
+      ids.forEach(clearInput);
       sessionStorage.setItem(QUICK_RESET_KEY, '1');
     }
   }
