@@ -69,11 +69,17 @@ public partial class MainWindow
                 "  s5f.dataset.goldbarR5fix = '1';\n" +
                 "  document.body.appendChild(s5f);\n" +
                 "}\n" +
-                "if (!document.querySelector('script[data-goldbar-r6]')) {\n" +
-                "  const s6 = document.createElement('script');\n" +
-                "  s6.src = 'r6.js';\n" +
-                "  s6.dataset.goldbarR6 = '1';\n" +
-                "  document.body.appendChild(s6);\n" +
+                "if (!document.querySelector('script[data-goldbar-assay-v2]')) {\n" +
+                "  const se = document.createElement('script');\n" +
+                "  se.src = 'assay-engine-v2.js';\n" +
+                "  se.dataset.goldbarAssayV2 = '1';\n" +
+                "  document.body.appendChild(se);\n" +
+                "}\n" +
+                "if (!document.querySelector('script[data-goldbar-r7]')) {\n" +
+                "  const s7 = document.createElement('script');\n" +
+                "  s7.src = 'r7.js';\n" +
+                "  s7.dataset.goldbarR7 = '1';\n" +
+                "  document.body.appendChild(s7);\n" +
                 "}\n";
             await Web.ExecuteScriptAsync(script);
         }
@@ -95,6 +101,7 @@ public partial class MainWindow
             {
                 "report:import" => await R4ImportReportAsync(),
                 "scale:test" => await R4TestScaleAsync(payload),
+                "user:get" => new { username = CurrentUser.Username },
                 _ => throw new InvalidOperationException($"Unknown r4 action: {action}")
             };
             R4Reply(id, true, result, null);
