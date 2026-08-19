@@ -20,6 +20,7 @@ public partial class App : Application
         var uiSelfTest = e.Args.Any(a => string.Equals(a, "--ui-self-test", StringComparison.OrdinalIgnoreCase));
         if (uiSelfTest)
         {
+            CurrentUser.Username = "self-test";
             _ = Task.Run(async () =>
             {
                 await Task.Delay(TimeSpan.FromSeconds(20));
@@ -37,13 +38,29 @@ public partial class App : Application
         else
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            var login = new LoginDialog();
-            var accepted = login.ShowDialog() == true;
-            if (!accepted)
+            var credentials = new CredentialStore();
+
+            if (!credentials.IsRegistered)
             {
-                Shutdown(0);
-                return;
+                var registration = new RegistrationDialog(credentials);
+                if (registration.ShowDialog() != true)
+                {
+                    Shutdown(0);
+                    return;
+                }
+                CurrentUser.Username = registration.RegisteredUsername;
             }
+            else
+            {
+                var login = new LoginDialog(credentials);
+                if (login.ShowDialog() != true)
+                {
+                    Shutdown(0);
+                    return;
+                }
+                CurrentUser.Username = login.LoggedInUsername;
+            }
+
             ShutdownMode = ShutdownMode.OnMainWindowClose;
         }
 
