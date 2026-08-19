@@ -13,8 +13,17 @@ public sealed class ScaleSettings
     public int Decimals { get; set; } = 3;
     public string RequestCommand { get; set; } = "P";
     public bool KeyboardRead { get; set; } = true;
+    public string ReportDirectory { get; set; } = GetDefaultReportDirectory();
 
     public static ScaleSettings Defaults() => new();
+
+    public static string GetDefaultReportDirectory()
+    {
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        if (string.IsNullOrWhiteSpace(documents))
+            documents = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return Path.Combine(documents, "Gold Bar", "Reports");
+    }
 
     public ScaleSettings Normalize()
     {
@@ -27,6 +36,9 @@ public sealed class ScaleSettings
         ReadIntervalMs = Math.Clamp(ReadIntervalMs, 100, 10000);
         Decimals = Math.Clamp(Decimals, 0, 6);
         RequestCommand ??= string.Empty;
+        ReportDirectory = string.IsNullOrWhiteSpace(ReportDirectory)
+            ? GetDefaultReportDirectory()
+            : Path.GetFullPath(Environment.ExpandEnvironmentVariables(ReportDirectory.Trim()));
         return this;
     }
 }
