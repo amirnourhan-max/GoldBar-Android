@@ -7,6 +7,7 @@
   let clearReentry = false;
   let observer = null;
   let probeWrapped = false;
+  let observerBusy = false;
 
   function normalizeDigits(value) {
     const fa = '۰۱۲۳۴۵۶۷۸۹';
@@ -22,6 +23,10 @@
     return Number.isFinite(n) ? n : NaN;
   }
 
+  function setTextIfChanged(el, text) {
+    if (el && el.textContent !== text) el.textContent = text;
+  }
+
   function cleanDecimal(input, min = null, max = null) {
     let v = normalizeDigits(input.value).replace(/[^0-9.]/g, '');
     const dot = v.indexOf('.');
@@ -32,7 +37,7 @@
       if (Number.isFinite(max)) n = Math.min(max, n);
       if (Number.isFinite(n) && String(n) !== v && !v.endsWith('.')) v = String(n);
     }
-    input.value = v;
+    if (input.value !== v) input.value = v;
   }
 
   function formatNumber(value, digits = 3) {
@@ -66,7 +71,7 @@
 
   function clearCalculationInputs() {
     $$('.calc-card input').forEach(input => {
-      input.value = '';
+      if (input.value !== '') input.value = '';
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
 
@@ -74,7 +79,7 @@
       .forEach(id => {
         const input = document.getElementById(id);
         if (!input) return;
-        input.value = '';
+        if (input.value !== '') input.value = '';
         input.dispatchEvent(new Event('input', { bubbles: true }));
       });
 
@@ -99,7 +104,7 @@
       try {
         clearReentry = true;
         window.confirm = () => true;
-        button.click(); // runs the original app clear routine so its private state is also reset
+        button.click();
       } finally {
         window.confirm = originalConfirm;
         clearReentry = false;
@@ -127,15 +132,13 @@
     const pct750 = parseNumber($('#split750PctWin')?.value);
     const result995 = Number.isFinite(base) && Number.isFinite(pct995) ? base * pct995 / 100 : NaN;
     const result750 = Number.isFinite(base) && Number.isFinite(pct750) ? base * pct750 / 100 : NaN;
-    const a = $('#split3679Win');
-    const b = $('#split6321Win');
-    if (a) a.textContent = Number.isFinite(result995) ? formatNumber(result995, 3) : '0';
-    if (b) b.textContent = Number.isFinite(result750) ? formatNumber(result750, 3) : '0';
+    setTextIfChanged($('#split3679Win'), Number.isFinite(result995) ? formatNumber(result995, 3) : '0');
+    setTextIfChanged($('#split6321Win'), Number.isFinite(result750) ? formatNumber(result750, 3) : '0');
 
     const sum = $('#r6PercentSum');
     if (sum) {
       const total = (Number.isFinite(pct995) ? pct995 : 0) + (Number.isFinite(pct750) ? pct750 : 0);
-      sum.textContent = `جمع درصدها: ${formatNumber(total, 2)}%`;
+      setTextIfChanged(sum, `جمع درصدها: ${formatNumber(total, 2)}%`);
       sum.classList.toggle('warn', Math.abs(total - 100) > 0.001);
     }
   }
@@ -149,15 +152,17 @@
     const correctionTool = tools.find(tool => tool.querySelector('#corrWeightWin'));
     if (!splitTool || !correctionTool) return false;
 
-    const heading = splitTool.querySelector('h3');
-    if (heading) heading.textContent = 'تقسیم طلای 995 / طلای 750';
+    if (splitTool.dataset.r6Enhanced !== '1') {
+      splitTool.dataset.r6Enhanced = '1';
+      setTextIfChanged(splitTool.querySelector('h3'), 'تقسیم طلای 995 / طلای 750');
 
-    const resultSpans = splitTool.querySelectorAll('.canonical-result span');
-    if (resultSpans[0]) resultSpans[0].textContent = 'طلای 995';
-    if (resultSpans[1]) resultSpans[1].textContent = 'طلای 750';
+      const resultSpans = splitTool.querySelectorAll('.canonical-result span');
+      setTextIfChanged(resultSpans[0], 'طلای 995');
+      setTextIfChanged(resultSpans[1], 'طلای 750');
 
-    const correctionLabels = correctionTool.querySelectorAll('label');
-    if (correctionLabels[1]) correctionLabels[1].textContent = 'عیار پایه';
+      const correctionLabels = correctionTool.querySelectorAll('label');
+      setTextIfChanged(correctionLabels[1], 'عیار پایه');
+    }
 
     let panel = $('#r6PercentPanel');
     if (!panel) {
@@ -178,11 +183,11 @@
       splitTool.dataset.r6SplitBound = '1';
       [splitBase, $('#split995PctWin'), $('#split750PctWin')].filter(Boolean).forEach(input => {
         input.addEventListener('input', () => {
-          cleanDecimal(input, input.id === 'splitBaseWin' ? 0 : 0, input.id === 'splitBaseWin' ? null : 100);
+          cleanDecimal(input, 0, input.id === 'splitBaseWin' ? null : 100);
           recalcSplit();
         });
         input.addEventListener('paste', () => setTimeout(() => {
-          cleanDecimal(input, input.id === 'splitBaseWin' ? 0 : 0, input.id === 'splitBaseWin' ? null : 100);
+          cleanDecimal(input, 0, input.id === 'splitBaseWin' ? null : 100);
           recalcSplit();
         }, 0));
         input.addEventListener('drop', event => event.preventDefault());
@@ -207,9 +212,17 @@
   function startObserver() {
     if (observer) return;
     observer = new MutationObserver(() => {
-      ensureMeltsScroll();
-      enhanceQuickTools();
-      installClearAllOverride();
+      if (observerBusy) return;
+      observerBusy = true;
+      requestAnimationFrame(() => {
+        try {
+          ensureMeltsScroll();
+          enhanceQuickTools();
+          installClearAllOverride();
+        } finally {
+          observerBusy = false;
+        }
+      });
     });
     observer.observe(document.body, { childList: true, subtree: true });
     window.__goldbarR6ScrollObserver = true;
@@ -217,7 +230,7 @@
 
   function updateVersion() {
     const version = $('.version');
-    if (version) version.textContent = 'GOLD BAR v2.0.0-r6';
+    setTextIfChanged(version, 'GOLD BAR v2.0.0-r6');
   }
 
   function wrapProbe(attempt = 0) {
@@ -257,7 +270,7 @@
     ensureMeltsScroll();
     startObserver();
     updateVersion();
-    setTimeout(() => wrapProbe(), 900); // after r5 final wrapper
+    setTimeout(() => wrapProbe(), 900);
   }
 
   init();
