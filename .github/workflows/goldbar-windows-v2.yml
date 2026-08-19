@@ -55,14 +55,14 @@ jobs:
           if (Test-Path $result) { Write-Host 'UI TEST RESULT:'; Get-Content $result -Raw | Write-Host }
           if ($p.ExitCode -ne 0) { throw "GoldBar UI self-test failed with exit code $($p.ExitCode)" }
 
-      - name: Validate windowed startup and GUI stability
+      - name: Validate login dialog startup and GUI stability
         shell: pwsh
         run: |
           $exe = Join-Path $PWD 'windows_src/publish/GoldBar.exe'
           $p = Start-Process -FilePath $exe -PassThru
-          Start-Sleep -Seconds 6
+          Start-Sleep -Seconds 4
           $p.Refresh()
-          if ($p.HasExited) { throw "GoldBar GUI exited early with code $($p.ExitCode)" }
+          if ($p.HasExited) { throw "GoldBar exited before showing login with code $($p.ExitCode)" }
           Add-Type @'
           using System;
           using System.Runtime.InteropServices;
@@ -78,19 +78,19 @@ jobs:
           }
           '@
           $handle = $p.MainWindowHandle
-          if ($handle -eq 0) { throw 'GoldBar main window handle was not found' }
+          if ($handle -eq 0) { throw 'GoldBar login window handle was not found' }
           $wp = New-Object WindowStateProbe+WINDOWPLACEMENT
           $wp.length = [Runtime.InteropServices.Marshal]::SizeOf($wp)
           if (![WindowStateProbe]::GetWindowPlacement($handle, [ref]$wp)) { throw 'GetWindowPlacement failed' }
-          if ($wp.showCmd -eq 2 -or $wp.showCmd -eq 3) { throw "GoldBar must start windowed, but showCmd=$($wp.showCmd)" }
+          if ($wp.showCmd -eq 2 -or $wp.showCmd -eq 3) { throw "Login must not start minimized or maximized. showCmd=$($wp.showCmd)" }
           $rect = New-Object WindowStateProbe+RECT
           if (![WindowStateProbe]::GetWindowRect($handle, [ref]$rect)) { throw 'GetWindowRect failed' }
           $windowW = $rect.Right - $rect.Left
           $windowH = $rect.Bottom - $rect.Top
           $screenW = [WindowStateProbe]::GetSystemMetrics(0)
           $screenH = [WindowStateProbe]::GetSystemMetrics(1)
-          if ($windowW -ge $screenW -and $windowH -ge $screenH) { throw "GoldBar unexpectedly occupies the full screen: ${windowW}x${windowH}" }
-          Write-Host "WINDOWED STARTUP PASS: ${windowW}x${windowH} on ${screenW}x${screenH}"
+          if ($windowW -ge $screenW -and $windowH -ge $screenH) { throw "Login unexpectedly occupies the full screen: ${windowW}x${windowH}" }
+          Write-Host "LOGIN STARTUP PASS: ${windowW}x${windowH} on ${screenW}x${screenH}"
           Stop-Process -Id $p.Id -Force
           Remove-Item (Join-Path $PWD 'windows_src/publish/GoldBar.exe.WebView2') -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -116,7 +116,7 @@ jobs:
       - name: Silent installer validation and installed-app retest
         shell: pwsh
         run: |
-          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r5.exe'
+          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r6.exe'
           if (!(Test-Path $setup)) { throw 'Installer was not produced' }
           $dest = Join-Path $env:RUNNER_TEMP 'GoldBar-Install-Test'
           $ip = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$dest") -Wait -PassThru
@@ -134,13 +134,13 @@ jobs:
       - name: SHA256
         shell: pwsh
         run: |
-          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r5.exe'
+          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r6.exe'
           Get-FileHash $setup -Algorithm SHA256 | Format-List
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-Windows-Installer-v2.0.0-r5
-          path: windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r5.exe
+          name: GoldBar-Windows-Installer-v2.0.0-r6
+          path: windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r6.exe
           if-no-files-found: error
           retention-days: 14
