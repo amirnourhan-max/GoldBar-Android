@@ -34,6 +34,18 @@ public partial class App : Application
                 catch { }
             });
         }
+        else
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            var login = new LoginDialog();
+            var accepted = login.ShowDialog() == true;
+            if (!accepted)
+            {
+                Shutdown(0);
+                return;
+            }
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+        }
 
         var window = new MainWindow(uiSelfTest);
         MainWindow = window;
