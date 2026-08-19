@@ -36,25 +36,7 @@
     document.body.appendChild(script);
   }
 
-  function installClearOverride() {
-    const button = document.querySelector('#quickClearAll');
-    if (!button || button.dataset.clearOverride === '1') return;
-    button.dataset.clearOverride = '1';
-    button.addEventListener('click', event => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      const weight = document.querySelector('#weightInput');
-      const assay = document.querySelector('#purityInput');
-      const description = document.querySelector('#descriptionInput');
-      if (weight) weight.value = '';
-      if (assay) assay.value = '';
-      if (description) description.value = '';
-      weight?.focus();
-    }, true);
-  }
-
   function afterDomReady() {
-    installClearOverride();
     loadEnhancements();
   }
 
@@ -153,7 +135,6 @@
     onScaleError: cb => on('scale:error', cb)
   };
 
-  // Deterministic bridge hooks used only by the Windows UI regression test.
   window.__goldbarBridgeArmCapture = () => { weightCaptureRequested = true; };
   window.__goldbarBridgeTestWeight = value => dispatchHostEvent('scale:weight', {
     value: Number(value), raw: 'SELF-TEST', decimals: 3
