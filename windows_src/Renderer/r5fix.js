@@ -53,4 +53,11 @@
   }
 
   install();
+
+  if (!document.querySelector('script[data-goldbar-r5final]')) {
+    const finalScript = document.createElement('script');
+    finalScript.src = 'r5final.js';
+    finalScript.dataset.goldbarR5final = '1';
+    document.body.appendChild(finalScript);
+  }
 })();
