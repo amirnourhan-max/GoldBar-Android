@@ -34,7 +34,7 @@ jobs:
           $out = Join-Path $PWD 'windows_src/publish'
           dotnet restore $proj -r win-x64
           if ($LASTEXITCODE -ne 0) { throw 'dotnet restore failed' }
-          dotnet publish $proj -c Release -r win-x64 --self-contained true --no-restore -o $out -p:PublishReadyToRun=true -p:PublishSingleFile=false
+          dotnet publish $proj -c Release -r win-x64 --self-contained true --no-restore -o $out -p:PublishReadyToRun=false -p:PublishSingleFile=false
           if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 
       - name: Run compiled software self-test
