@@ -110,7 +110,7 @@
     nav.dataset.r13CostHook = '1';
     nav.addEventListener('click', () => {
       setTimeout(patchQuickCalc, 30);
-      setTimeout(patchQuickCalc, 120);
+      setTimeout(patchQuickCalc, 100);
       setTimeout(patchQuickCalc, 350);
     }, true);
   }
@@ -124,11 +124,20 @@
     observer.observe(document.body, { childList:true, subtree:true });
   }
 
+  function loadR14() {
+    if (document.querySelector('script[data-goldbar-r14-cost]')) return;
+    const script = document.createElement('script');
+    script.src = 'r14-cost-engine.js';
+    script.dataset.goldbarR14Cost = '1';
+    document.body.appendChild(script);
+  }
+
   function init(attempt = 0) {
     installStyles();
     installNavigationHook();
     startObserver();
     patchQuickCalc();
+    loadR14();
     if (!$('.nav-item') && attempt < 40) setTimeout(() => init(attempt + 1), 100);
   }
 
