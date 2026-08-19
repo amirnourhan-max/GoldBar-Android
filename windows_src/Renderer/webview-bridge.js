@@ -1,11 +1,22 @@
 (() => {
   'use strict';
 
+  function finalizeNumericSettingsInputs() {
+    for (const id of ['readInterval', 'decimals']) {
+      const input = document.getElementById(id);
+      if (!input) continue;
+      input.type = 'text';
+      input.inputMode = 'numeric';
+      input.autocomplete = 'off';
+    }
+  }
+
   function loadEnhancements() {
     if (document.querySelector('script[data-goldbar-enhancements]')) return;
     const script = document.createElement('script');
     script.src = 'enhancements.js';
     script.dataset.goldbarEnhancements = '1';
+    script.onload = finalizeNumericSettingsInputs;
     document.body.appendChild(script);
   }
 
