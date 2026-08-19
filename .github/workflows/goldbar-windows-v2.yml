@@ -5,12 +5,12 @@ on:
   push:
     branches: [windows-goldbar-v2]
     paths:
-      - 'ci/GoldBar_Windows_Release_v2_Source.zip'
+      - 'windows_src/**'
       - '.github/workflows/goldbar-windows-v2.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'ci/GoldBar_Windows_Release_v2_Source.zip'
+      - 'windows_src/**'
       - '.github/workflows/goldbar-windows-v2.yml'
   workflow_dispatch:
 
@@ -27,19 +27,11 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Expand source
-        shell: pwsh
-        run: |
-          $work = Join-Path $PWD 'work'
-          New-Item -ItemType Directory -Force -Path $work | Out-Null
-          tar -xf 'ci/GoldBar_Windows_Release_v2_Source.zip' -C $work
-          if ($LASTEXITCODE -ne 0) { throw 'source extraction failed' }
-
       - name: Restore and publish self-contained x64
         shell: pwsh
         run: |
-          $proj = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/GoldBar.Windows.csproj'
-          $out = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/publish'
+          $proj = Join-Path $PWD 'windows_src/GoldBar.Windows.csproj'
+          $out = Join-Path $PWD 'windows_src/publish'
           dotnet restore $proj -r win-x64
           if ($LASTEXITCODE -ne 0) { throw 'dotnet restore failed' }
           dotnet publish $proj -c Release -r win-x64 --self-contained true --no-restore -o $out -p:PublishReadyToRun=true -p:PublishSingleFile=false
@@ -48,14 +40,15 @@ jobs:
       - name: Run compiled software self-test
         shell: pwsh
         run: |
-          $exe = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/publish/GoldBar.exe'
+          $exe = Join-Path $PWD 'windows_src/publish/GoldBar.exe'
+          if (!(Test-Path $exe)) { throw 'GoldBar.exe was not produced' }
           & $exe --self-test
           if ($LASTEXITCODE -ne 0) { throw "GoldBar self-test failed with exit code $LASTEXITCODE" }
 
       - name: GUI startup smoke test
         shell: pwsh
         run: |
-          $exe = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/publish/GoldBar.exe'
+          $exe = Join-Path $PWD 'windows_src/publish/GoldBar.exe'
           $p = Start-Process -FilePath $exe -PassThru
           Start-Sleep -Seconds 7
           if ($p.HasExited) { throw "GoldBar GUI exited early with code $($p.ExitCode)" }
@@ -64,7 +57,7 @@ jobs:
       - name: Download WebView2 bootstrapper
         shell: pwsh
         run: |
-          $dest = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/Installer/MicrosoftEdgeWebview2Setup.exe'
+          $dest = Join-Path $PWD 'windows_src/Installer/MicrosoftEdgeWebview2Setup.exe'
           Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $dest -UseBasicParsing
           if (!(Test-Path $dest)) { throw 'WebView2 bootstrapper download failed' }
 
@@ -75,7 +68,7 @@ jobs:
       - name: Compile installer
         shell: pwsh
         run: |
-          $iss = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/Installer/GoldBar.iss'
+          $iss = Join-Path $PWD 'windows_src/Installer/GoldBar.iss'
           $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
           & $iscc $iss
           if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed' }
@@ -83,7 +76,8 @@ jobs:
       - name: Silent installer validation
         shell: pwsh
         run: |
-          $setup = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/Installer/Output/GoldBar-Setup-v2.0.0.exe'
+          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0.exe'
+          if (!(Test-Path $setup)) { throw 'Installer was not produced' }
           $dest = Join-Path $env:RUNNER_TEMP 'GoldBar-Install-Test'
           & $setup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/DIR=$dest"
           if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit code $LASTEXITCODE" }
@@ -95,13 +89,13 @@ jobs:
       - name: SHA256
         shell: pwsh
         run: |
-          $setup = Join-Path $PWD 'work/GoldBar_Windows_Release_v2/Installer/Output/GoldBar-Setup-v2.0.0.exe'
+          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0.exe'
           Get-FileHash $setup -Algorithm SHA256 | Format-List
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: GoldBar-Windows-Installer-v2.0.0
-          path: work/GoldBar_Windows_Release_v2/Installer/Output/GoldBar-Setup-v2.0.0.exe
+          path: windows_src/Installer/Output/GoldBar-Setup-v2.0.0.exe
           if-no-files-found: error
           retention-days: 14
