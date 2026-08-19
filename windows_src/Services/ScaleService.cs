@@ -254,8 +254,6 @@ public sealed class ScaleService : IDisposable
             var command = _settings.RequestCommand ?? string.Empty;
             if (command.Length > 0)
             {
-                // Use SerialPort.Write rather than BaseStream so receive/write traffic stays
-                // inside the same SerialPort buffering abstraction.
                 port.Write(command);
             }
             return true;
@@ -278,9 +276,6 @@ public sealed class ScaleService : IDisposable
         try
         {
             if (sender is not SerialPort port || !ReferenceEquals(port, _port) || !port.IsOpen) return;
-
-            // ReadExisting drains SerialPort's own internal receive buffer. This is
-            // intentionally not mixed with BaseStream reads.
             var chunk = port.ReadExisting();
             if (string.IsNullOrEmpty(chunk)) return;
 
@@ -540,9 +535,9 @@ public sealed class ScaleService : IDisposable
         UnauthorizedAccessException => $"پورت {port} در اختیار برنامه دیگری است یا دسترسی مجاز نیست.",
         IOException => $"ارتباط با {port} قطع یا نامعتبر است. کابل، تبدیل USB/Serial و درایور را بررسی کنید.",
         ArgumentException => $"تنظیمات پورت {port} معتبر نیست. Baud Rate، Data Bits، Parity و Stop Bits را بررسی کنید.",
+        ObjectDisposedException => $"ارتباط {port} در حین عملیات بسته شد.",
         InvalidOperationException => $"پورت {port} در وضعیت قابل استفاده نیست. اتصال را قطع و دوباره برقرار کنید.",
         TimeoutException => $"ترازو روی {port} در زمان مقرر پاسخ نداد.",
-        ObjectDisposedException => $"ارتباط {port} در حین عملیات بسته شد.",
         _ => $"خطای ترازو: {ex.Message}"
     };
 
