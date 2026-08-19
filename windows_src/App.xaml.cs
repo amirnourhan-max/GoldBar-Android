@@ -13,7 +13,8 @@ public partial class App : Application
         {
             var baseExit = SelfTest.Run(Console.Out);
             var r4Exit = R4SelfTest.Run(Console.Out);
-            Shutdown(baseExit == 0 && r4Exit == 0 ? 0 : 1);
+            var r11Exit = R11SelfTest.Run(Console.Out);
+            Shutdown(baseExit == 0 && r4Exit == 0 && r11Exit == 0 ? 0 : 1);
             return;
         }
 
