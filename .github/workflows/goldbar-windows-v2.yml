@@ -45,6 +45,13 @@ jobs:
           $p = Start-Process -FilePath $exe -ArgumentList '--self-test' -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "GoldBar self-test failed with exit code $($p.ExitCode)" }
 
+      - name: Run renderer UI interaction self-test
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD 'windows_src/publish/GoldBar.exe'
+          $p = Start-Process -FilePath $exe -ArgumentList '--ui-self-test' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "GoldBar UI self-test failed with exit code $($p.ExitCode)" }
+
       - name: GUI startup smoke test
         shell: pwsh
         run: |
@@ -76,7 +83,7 @@ jobs:
       - name: Silent installer validation
         shell: pwsh
         run: |
-          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0.exe'
+          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r1.exe'
           if (!(Test-Path $setup)) { throw 'Installer was not produced' }
           $dest = Join-Path $env:RUNNER_TEMP 'GoldBar-Install-Test'
           $ip = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$dest") -Wait -PassThru
@@ -85,17 +92,19 @@ jobs:
           if (!(Test-Path $installedExe)) { throw 'Installed GoldBar.exe not found' }
           $sp = Start-Process -FilePath $installedExe -ArgumentList '--self-test' -Wait -PassThru
           if ($sp.ExitCode -ne 0) { throw "Installed executable self-test failed with exit code $($sp.ExitCode)" }
+          $up = Start-Process -FilePath $installedExe -ArgumentList '--ui-self-test' -Wait -PassThru
+          if ($up.ExitCode -ne 0) { throw "Installed UI self-test failed with exit code $($up.ExitCode)" }
 
       - name: SHA256
         shell: pwsh
         run: |
-          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0.exe'
+          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r1.exe'
           Get-FileHash $setup -Algorithm SHA256 | Format-List
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-Windows-Installer-v2.0.0
-          path: windows_src/Installer/Output/GoldBar-Setup-v2.0.0.exe
+          name: GoldBar-Windows-Installer-v2.0.0-r1
+          path: windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r1.exe
           if-no-files-found: error
           retention-days: 14
