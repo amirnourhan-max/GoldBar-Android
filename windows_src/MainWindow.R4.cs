@@ -21,8 +21,20 @@ public partial class MainWindow
     {
         base.OnInitialized(e);
         WindowState = R4WindowPolicy.StartupState(_runUiSelfTest);
+        if (!_runUiSelfTest) R4ApplyInitialWindowBounds();
         Closing += R4OnClosing;
         Web.NavigationCompleted += R4OnNavigationCompleted;
+    }
+
+    private void R4ApplyInitialWindowBounds()
+    {
+        var work = SystemParameters.WorkArea;
+        var targetWidth = Math.Min(1536d, work.Width * 0.88d);
+        var targetHeight = Math.Min(1024d, work.Height * 0.88d);
+        Width = Math.Max(MinWidth, Math.Min(targetWidth, Math.Max(MinWidth, work.Width - 24d)));
+        Height = Math.Max(MinHeight, Math.Min(targetHeight, Math.Max(MinHeight, work.Height - 24d)));
+        Left = work.Left + Math.Max(0d, (work.Width - Width) / 2d);
+        Top = work.Top + Math.Max(0d, (work.Height - Height) / 2d);
     }
 
     private async void R4OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
@@ -60,9 +72,11 @@ public partial class MainWindow
             if (!root.TryGetProperty("kind", out var kind) || kind.GetString() != "r4request") return;
             id = root.TryGetProperty("id", out var idElement) ? idElement.GetString() : null;
             var action = root.TryGetProperty("action", out var actionElement) ? actionElement.GetString() : string.Empty;
+            var payload = root.TryGetProperty("payload", out var p) ? p : default;
             object result = action switch
             {
                 "report:import" => await R4ImportReportAsync(),
+                "scale:test" => await R4TestScaleAsync(payload),
                 _ => throw new InvalidOperationException($"Unknown r4 action: {action}")
             };
             R4Reply(id, true, result, null);
@@ -71,6 +85,22 @@ public partial class MainWindow
         {
             R4Reply(id, false, null, ex.Message);
         }
+    }
+
+    private async Task<object> R4TestScaleAsync(JsonElement payload)
+    {
+        ScaleSettings candidate;
+        try
+        {
+            candidate = payload.ValueKind == JsonValueKind.Object
+                ? payload.Deserialize<ScaleSettings>(_json) ?? _settings
+                : _settings;
+        }
+        catch
+        {
+            candidate = _settings;
+        }
+        return await _scale.TestAsync(candidate, 1400);
     }
 
     private Task<object> R4ImportReportAsync()
