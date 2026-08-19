@@ -16,6 +16,13 @@ public static class SelfTest
             else { output.WriteLine($"FAIL: {name}"); failures.Add(name); }
         }
 
+        Check(LoginCredentials.IsValid(LoginCredentials.DefaultUsername, LoginCredentials.DefaultPassword),
+            "Login accepts configured default credentials");
+        Check(!LoginCredentials.IsValid(LoginCredentials.DefaultUsername, "wrong"),
+            "Login rejects a wrong password");
+        Check(!LoginCredentials.IsValid("wrong-user", LoginCredentials.DefaultPassword),
+            "Login rejects a wrong username");
+
         Check(WeightParser.Parse("ST,+ 214.373 g", 3) == 214.373, "WeightParser parses scale payload");
         Check(WeightParser.Parse("WT=102,500", 3) == 102.5, "WeightParser accepts comma decimal");
         Check(WeightParser.Parse("garbage", 3) is null, "WeightParser rejects nonnumeric payload");
