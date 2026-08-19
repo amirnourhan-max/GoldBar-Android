@@ -8,12 +8,16 @@ namespace GoldBar.Windows;
 
 public sealed class LoginDialog : Window
 {
+    private readonly CredentialStore _store;
     private readonly TextBox _username = new();
     private readonly PasswordBox _password = new();
     private readonly TextBlock _error = new();
 
-    public LoginDialog()
+    public string LoggedInUsername { get; private set; } = string.Empty;
+
+    public LoginDialog(CredentialStore store)
     {
+        _store = store;
         Title = "GOLD BAR Login";
         Width = 430;
         Height = 330;
@@ -43,10 +47,7 @@ public sealed class LoginDialog : Window
             CornerRadius = new CornerRadius(16),
             Padding = new Thickness(26)
         };
-        root.MouseLeftButtonDown += (_, e) =>
-        {
-            if (e.ButtonState == MouseButtonState.Pressed) DragMove();
-        };
+        root.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == MouseButtonState.Pressed) DragMove(); };
 
         var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         root.Child = stack;
@@ -79,8 +80,9 @@ public sealed class LoginDialog : Window
         _username.FontSize = 14;
         _username.FontWeight = FontWeights.Bold;
         _username.Padding = new Thickness(10, 7, 10, 7);
-        _username.Text = LoginCredentials.DefaultUsername;
+        _username.Text = _store.RegisteredUsername;
         _username.Margin = new Thickness(0, 0, 0, 12);
+        _username.FlowDirection = FlowDirection.RightToLeft;
         stack.Children.Add(_username);
 
         stack.Children.Add(Label("رمز عبور", muted));
@@ -112,14 +114,9 @@ public sealed class LoginDialog : Window
 
         var exit = new Button
         {
-            Content = "خروج",
-            Height = 42,
-            Background = panel,
-            Foreground = text,
-            BorderBrush = new SolidColorBrush(Color.FromRgb(70, 74, 82)),
-            BorderThickness = new Thickness(1),
-            FontWeight = FontWeights.Bold,
-            Cursor = Cursors.Hand
+            Content = "خروج", Height = 42, Background = panel, Foreground = text,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(70, 74, 82)), BorderThickness = new Thickness(1),
+            FontWeight = FontWeights.Bold, Cursor = Cursors.Hand
         };
         exit.Click += (_, _) => { DialogResult = false; Close(); };
         Grid.SetColumn(exit, 0);
@@ -127,14 +124,9 @@ public sealed class LoginDialog : Window
 
         var login = new Button
         {
-            Content = "ورود",
-            Height = 42,
-            Background = gold,
-            Foreground = new SolidColorBrush(Color.FromRgb(22, 18, 9)),
-            BorderBrush = gold,
-            BorderThickness = new Thickness(1),
-            FontWeight = FontWeights.ExtraBold,
-            Cursor = Cursors.Hand
+            Content = "ورود", Height = 42, Background = gold,
+            Foreground = new SolidColorBrush(Color.FromRgb(22, 18, 9)), BorderBrush = gold,
+            BorderThickness = new Thickness(1), FontWeight = FontWeights.ExtraBold, Cursor = Cursors.Hand
         };
         login.Click += (_, _) => TryLogin();
         Grid.SetColumn(login, 2);
@@ -143,11 +135,7 @@ public sealed class LoginDialog : Window
         stack.Children.Add(actions);
         Content = root;
 
-        Loaded += (_, _) =>
-        {
-            _password.Focus();
-            Keyboard.Focus(_password);
-        };
+        Loaded += (_, _) => { _password.Focus(); Keyboard.Focus(_password); };
     }
 
     private static TextBlock Label(string value, Brush color) => new()
@@ -163,8 +151,9 @@ public sealed class LoginDialog : Window
 
     private void TryLogin()
     {
-        if (LoginCredentials.IsValid(_username.Text, _password.Password))
+        if (_store.Verify(_username.Text, _password.Password))
         {
+            LoggedInUsername = _store.RegisteredUsername;
             DialogResult = true;
             Close();
             return;
