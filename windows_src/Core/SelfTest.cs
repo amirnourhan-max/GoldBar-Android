@@ -67,8 +67,9 @@ public static class SelfTest
             }
             Check(sheetXml.Contains("وزن (g)", StringComparison.Ordinal) &&
                   sheetXml.Contains("عیار (‰)", StringComparison.Ordinal) &&
-                  sheetXml.Contains("100", StringComparison.Ordinal) &&
-                  sheetXml.Contains("750", StringComparison.Ordinal),
+                  sheetXml.Contains(">740<", StringComparison.Ordinal) &&
+                  sheetXml.Contains(">760<", StringComparison.Ordinal) &&
+                  sheetXml.Contains("746.666", StringComparison.Ordinal),
                   "Report XLSX contains entries and weighted summary");
         }
         catch (Exception ex)
