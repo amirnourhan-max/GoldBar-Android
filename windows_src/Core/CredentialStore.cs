@@ -49,28 +49,9 @@ public sealed class CredentialStore
     public void Register(string username, string password)
     {
         username = (username ?? string.Empty).Trim();
-        if (username.Length < 2) throw new ArgumentException("نام کاربری باید حداقل ۲ کاراکتر باشد.");
-        if (username.Length > 60) throw new ArgumentException("نام کاربری حداکثر ۶۰ کاراکتر می‌تواند باشد.");
-        if (string.IsNullOrWhiteSpace(password) || password.Length < 4)
-            throw new ArgumentException("رمز عبور باید حداقل ۴ کاراکتر باشد.");
-        if (password.Length > 128) throw new ArgumentException("رمز عبور بیش از حد طولانی است.");
-
-        var salt = RandomNumberGenerator.GetBytes(SaltSize);
-        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, DefaultIterations, HashAlgorithmName.SHA256, HashSize);
-        var file = new CredentialFile
-        {
-            Username = username,
-            Salt = Convert.ToBase64String(salt),
-            PasswordHash = Convert.ToBase64String(hash),
-            Iterations = DefaultIterations,
-            Version = 1
-        };
-
-        var dir = Path.GetDirectoryName(_path)!;
-        Directory.CreateDirectory(dir);
-        var temp = _path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(file, _json));
-        File.Move(temp, _path, true);
+        ValidateUsername(username);
+        ValidatePassword(password);
+        Save(CreateCredential(username, password));
     }
 
     public bool Verify(string? username, string? password)
@@ -90,6 +71,57 @@ public sealed class CredentialStore
         {
             return false;
         }
+    }
+
+    public void ChangePassword(string username, string currentPassword, string newPassword)
+    {
+        var file = Load() ?? throw new InvalidOperationException("اطلاعات ورود ثبت نشده است.");
+        var normalizedUser = (username ?? string.Empty).Trim();
+        if (!string.Equals(file.Username, normalizedUser, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("نام کاربری معتبر نیست.");
+        if (!Verify(file.Username, currentPassword))
+            throw new InvalidOperationException("رمز عبور فعلی صحیح نیست.");
+        ValidatePassword(newPassword);
+        if (string.Equals(currentPassword, newPassword, StringComparison.Ordinal))
+            throw new InvalidOperationException("رمز جدید باید با رمز فعلی متفاوت باشد.");
+
+        Save(CreateCredential(file.Username, newPassword));
+    }
+
+    private static void ValidateUsername(string username)
+    {
+        if (username.Length < 2) throw new ArgumentException("نام کاربری باید حداقل ۲ کاراکتر باشد.");
+        if (username.Length > 60) throw new ArgumentException("نام کاربری حداکثر ۶۰ کاراکتر می‌تواند باشد.");
+    }
+
+    private static void ValidatePassword(string password)
+    {
+        if (string.IsNullOrWhiteSpace(password) || password.Length < 4)
+            throw new ArgumentException("رمز عبور باید حداقل ۴ کاراکتر باشد.");
+        if (password.Length > 128) throw new ArgumentException("رمز عبور بیش از حد طولانی است.");
+    }
+
+    private static CredentialFile CreateCredential(string username, string password)
+    {
+        var salt = RandomNumberGenerator.GetBytes(SaltSize);
+        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, DefaultIterations, HashAlgorithmName.SHA256, HashSize);
+        return new CredentialFile
+        {
+            Username = username,
+            Salt = Convert.ToBase64String(salt),
+            PasswordHash = Convert.ToBase64String(hash),
+            Iterations = DefaultIterations,
+            Version = 1
+        };
+    }
+
+    private void Save(CredentialFile file)
+    {
+        var dir = Path.GetDirectoryName(_path)!;
+        Directory.CreateDirectory(dir);
+        var temp = _path + ".tmp";
+        File.WriteAllText(temp, JsonSerializer.Serialize(file, _json));
+        File.Move(temp, _path, true);
     }
 
     private CredentialFile? Load()
