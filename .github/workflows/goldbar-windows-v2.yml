@@ -119,7 +119,7 @@ jobs:
       - name: Silent installer validation and installed-app retest
         shell: pwsh
         run: |
-          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r10.exe'
+          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r11.exe'
           if (!(Test-Path $setup)) { throw 'Installer was not produced' }
           $dest = Join-Path $env:RUNNER_TEMP 'GoldBar-Install-Test'
           $ip = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$dest") -Wait -PassThru
@@ -134,16 +134,29 @@ jobs:
           if (Test-Path $result) { Write-Host 'INSTALLED UI TEST RESULT:'; Get-Content $result -Raw | Write-Host }
           if ($up.ExitCode -ne 0) { throw "Installed UI self-test failed with exit code $($up.ExitCode)" }
 
+          # Verify that a real uninstall removes the registered credential so the next
+          # installation starts with registration again.
+          $credentialDir = Join-Path $env:LOCALAPPDATA 'GoldBar'
+          $credential = Join-Path $credentialDir 'credentials.json'
+          New-Item -ItemType Directory -Path $credentialDir -Force | Out-Null
+          Set-Content -Path $credential -Value '{"test":true}' -Encoding UTF8
+          $uninstaller = Join-Path $dest 'unins000.exe'
+          if (!(Test-Path $uninstaller)) { throw 'Uninstaller was not created' }
+          $unp = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+          if ($unp.ExitCode -ne 0) { throw "Uninstaller failed with exit code $($unp.ExitCode)" }
+          if (Test-Path $credential) { throw 'Credential file survived uninstall; registration would not reset' }
+          Write-Host 'UNINSTALL REGISTRATION RESET PASS'
+
       - name: SHA256
         shell: pwsh
         run: |
-          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r10.exe'
+          $setup = Join-Path $PWD 'windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r11.exe'
           Get-FileHash $setup -Algorithm SHA256 | Format-List
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: GoldBar-Windows-Installer-v2.0.0-r10
-          path: windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r10.exe
+          name: GoldBar-Windows-Installer-v2.0.0-r11
+          path: windows_src/Installer/Output/GoldBar-Setup-v2.0.0-r11.exe
           if-no-files-found: error
           retention-days: 14
