@@ -12,10 +12,13 @@ public partial class MainWindow : Window
     private readonly SettingsStore _settingsStore = new();
     private readonly ScaleService _scale = new();
     private readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
+    private readonly bool _runUiSelfTest;
+    private bool _uiSelfTestStarted;
     private ScaleSettings _settings = ScaleSettings.Defaults();
 
-    public MainWindow()
+    public MainWindow(bool runUiSelfTest = false)
     {
+        _runUiSelfTest = runUiSelfTest;
         InitializeComponent();
         Loaded += OnLoaded;
         Closed += (_, _) => _scale.Dispose();
@@ -33,23 +36,97 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            if (_runUiSelfTest)
+            {
+                Console.Error.WriteLine("UI-SELF-TEST: WebView2 initialization failed: " + ex.Message);
+                Application.Current.Shutdown(1);
+                return;
+            }
             MessageBox.Show(
                 "Microsoft Edge WebView2 Runtime is required to run Gold Bar.\n\n" + ex.Message,
                 "Gold Bar", MessageBoxButton.OK, MessageBoxImage.Error);
             Close();
             return;
         }
+
         Web.CoreWebView2.Settings.AreDevToolsEnabled = false;
         Web.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
         Web.CoreWebView2.Settings.IsStatusBarEnabled = false;
         Web.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+        Web.NavigationCompleted += OnNavigationCompleted;
 
         var renderer = Path.Combine(AppContext.BaseDirectory, "Renderer");
         Web.CoreWebView2.SetVirtualHostNameToFolderMapping(
             "app.goldbar", renderer, CoreWebView2HostResourceAccessKind.DenyCors);
         Web.Source = new Uri("https://app.goldbar/index.html");
 
-        if (_settings.AutoRead) await _scale.ConnectAsync(_settings);
+        if (_settings.AutoRead && !_runUiSelfTest)
+            await _scale.ConnectAsync(_settings);
+    }
+
+    private async void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+    {
+        if (!_runUiSelfTest || _uiSelfTestStarted) return;
+        _uiSelfTestStarted = true;
+
+        try
+        {
+            await Task.Delay(250);
+            const string script = """
+(() => {
+  const base = window.__goldbarSelfTest ? window.__goldbarSelfTest() : { ok: false };
+  const title = () => document.querySelector('.dash-title span:last-child')?.textContent?.trim() || '';
+  const nav = [...document.querySelectorAll('.nav-item')];
+  const clickNav = label => {
+    const btn = nav.find(b => (b.textContent || '').includes(label));
+    if (!btn) return false;
+    btn.click();
+    return btn.classList.contains('active');
+  };
+
+  const meltsClicked = clickNav('آبشده‌ها');
+  const meltsNav = meltsClicked && title() === 'آبشده‌ها' && document.querySelector('#pageHost')?.classList.contains('active');
+
+  const registerClicked = clickNav('ثبت آبشده');
+  const weight = document.querySelector('#weightInput');
+  const assay = document.querySelector('#purityInput');
+  weight.value = '12.345';
+  weight.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  const enterMovesToAssay = document.activeElement === assay;
+  assay.value = '750';
+  assay.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+  clickNav('آبشده‌ها');
+  const meltsText = document.querySelector('#pageHost')?.textContent || '';
+  const quickSaved = meltsText.includes('12.345') && meltsText.includes('750');
+
+  const reportsClicked = clickNav('گزارش‌ها');
+  const reportsWork = reportsClicked && title() === 'گزارش‌ها' && (document.querySelector('#pageHost')?.textContent || '').includes('تعداد آبشده‌ها');
+
+  const settingsClicked = clickNav('تنظیمات');
+  const settingsWork = settingsClicked && title() === 'تنظیمات';
+
+  const dashboardClicked = clickNav('داشبورد');
+  const dashboardWork = dashboardClicked && title() === 'داشبورد';
+
+  return {
+    ok: Boolean(base.ok && meltsNav && registerClicked && enterMovesToAssay && quickSaved && reportsWork && settingsWork && dashboardWork),
+    base, meltsNav, registerClicked, enterMovesToAssay, quickSaved, reportsWork, settingsWork, dashboardWork
+  };
+})()
+""";
+
+            var json = await Web.ExecuteScriptAsync(script);
+            using var doc = JsonDocument.Parse(json);
+            var ok = doc.RootElement.TryGetProperty("ok", out var okElement) && okElement.GetBoolean();
+            Console.WriteLine("UI-SELF-TEST: " + json);
+            Application.Current.Shutdown(ok ? 0 : 1);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("UI-SELF-TEST: FAIL: " + ex);
+            Application.Current.Shutdown(1);
+        }
     }
 
     private async void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
