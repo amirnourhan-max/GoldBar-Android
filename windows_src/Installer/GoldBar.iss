@@ -13,7 +13,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=Output
-OutputBaseFilename=GoldBar-Setup-v2.0.0-r10
+OutputBaseFilename=GoldBar-Setup-v2.0.0-r11
 SetupIconFile=..\Renderer\assets\GoldBar.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64
@@ -39,6 +39,12 @@ Name: "{autodesktop}\Gold Bar"; Filename: "{app}\{#MyAppExeName}"; Tasks: deskto
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 Name: "webview2"; Description: "Install/repair Microsoft Edge WebView2 Runtime"; GroupDescription: "Runtime:"; Flags: checkedonce
+
+[UninstallDelete]
+; Removing the application also removes only the login credential. On the next
+; installation Gold Bar therefore starts with first-run registration again.
+Type: files; Name: "{localappdata}\GoldBar\credentials.json"
+Type: files; Name: "{localappdata}\GoldBar\credentials.json.tmp"
 
 [Run]
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Installing WebView2 Runtime..."; Flags: waituntilterminated skipifsilent; Tasks: webview2; Check: FileExists(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe'))
