@@ -16,12 +16,28 @@ public static class SelfTest
             else { output.WriteLine($"FAIL: {name}"); failures.Add(name); }
         }
 
-        Check(LoginCredentials.IsValid(LoginCredentials.DefaultUsername, LoginCredentials.DefaultPassword),
-            "Login accepts configured default credentials");
-        Check(!LoginCredentials.IsValid(LoginCredentials.DefaultUsername, "wrong"),
-            "Login rejects a wrong password");
-        Check(!LoginCredentials.IsValid("wrong-user", LoginCredentials.DefaultPassword),
-            "Login rejects a wrong username");
+        var credentialPath = Path.Combine(Path.GetTempPath(), $"GoldBar-Credential-Test-{Guid.NewGuid():N}.json");
+        try
+        {
+            var credentials = new CredentialStore(credentialPath);
+            Check(!credentials.IsRegistered, "Fresh install has no registered user");
+            credentials.Register("amir-test", "pass-1234");
+            Check(credentials.IsRegistered && credentials.RegisteredUsername == "amir-test", "First-run registration persists username");
+            Check(credentials.Verify("amir-test", "pass-1234"), "Registered credentials allow login");
+            Check(!credentials.Verify("amir-test", "wrong"), "Wrong password is rejected");
+            Check(!credentials.Verify("wrong-user", "pass-1234"), "Wrong username is rejected");
+            var raw = File.ReadAllText(credentialPath);
+            Check(!raw.Contains("pass-1234", StringComparison.Ordinal), "Password is never stored as plaintext");
+        }
+        catch (Exception ex)
+        {
+            output.WriteLine("FAIL: Credential store exception: " + ex);
+            failures.Add("Credential store exception");
+        }
+        finally
+        {
+            try { if (File.Exists(credentialPath)) File.Delete(credentialPath); } catch { }
+        }
 
         Check(WeightParser.Parse("ST,+ 214.373 g", 3) == 214.373, "WeightParser parses scale payload");
         Check(WeightParser.Parse("WT=102,500", 3) == 102.5, "WeightParser accepts comma decimal");
