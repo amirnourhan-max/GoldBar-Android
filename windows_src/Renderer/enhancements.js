@@ -132,9 +132,12 @@
       if (labels[0]) labels[0].textContent = 'عیار هدف';
       if (labels[1]) labels[1].textContent = 'درصد نقره';
       const inputs = cards[1].querySelectorAll('input');
+      if (inputs[0] && inputs[0].value === '746') inputs[0].value = '747';
       if (inputs[1] && inputs[1].value === '10') inputs[1].value = '45';
       const p = cards[1].querySelector('p');
       if (p) p.textContent = 'محاسبه بار لازم برای رسیدن آبشده‌ها به عیار هدف';
+      const firstMiniLabel = cards[1].querySelector('.mini-stats > div:first-child span');
+      if (firstMiniLabel) firstMiniLabel.textContent = 'نقره مورد نیاز (g)';
       const wideLabel = cards[1].querySelector('.wide-stat span');
       if (wideLabel) wideLabel.textContent = 'کل بار مورد نیاز (g)';
     }
@@ -172,10 +175,14 @@
         const castingAssay = parseNumber(inputs[0]?.value);
         const silverPercent = parseNumber(inputs[1]?.value);
         const result = requiredAlloy(summary, castingAssay, silverPercent, summary.weight);
-        const pureGold = summary.weight > 0 && Number.isFinite(summary.averageAssay)
-          ? summary.weight * summary.averageAssay / 1000
+
+        // IMPORTANT: this first dashboard value is the workbook AB6 result, not
+        // contained/pure gold. Previous builds accidentally wrote pure gold here after
+        // the label had already been changed to «نقره مورد نیاز».
+        const shownSilver = Number.isFinite(result.silverRequired) && result.totalAlloyRequired > 0
+          ? result.silverRequired
           : 0;
-        setText(stats[0], formatNumber(pureGold, 3));
+        setText(stats[0], formatNumber(shownSilver, 3));
         setText(stats[1], formatNumber(summary.weight || 0, 3));
         totalAlloy = result.totalAlloyRequired;
         setText(required, Number.isFinite(totalAlloy) ? formatNumber(totalAlloy, 3) : '0');
