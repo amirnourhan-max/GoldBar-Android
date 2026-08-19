@@ -11,8 +11,9 @@ public partial class App : Application
 
         if (e.Args.Any(a => string.Equals(a, "--self-test", StringComparison.OrdinalIgnoreCase)))
         {
-            var exitCode = SelfTest.Run(Console.Out);
-            Shutdown(exitCode);
+            var baseExit = SelfTest.Run(Console.Out);
+            var r4Exit = R4SelfTest.Run(Console.Out);
+            Shutdown(baseExit == 0 && r4Exit == 0 ? 0 : 1);
             return;
         }
 
