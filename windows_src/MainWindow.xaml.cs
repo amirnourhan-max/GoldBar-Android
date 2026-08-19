@@ -38,7 +38,7 @@ public partial class MainWindow : Window
         {
             if (_runUiSelfTest)
             {
-                Console.Error.WriteLine("UI-SELF-TEST: WebView2 initialization failed: " + ex.Message);
+                WriteUiTestResult(JsonSerializer.Serialize(new { ok = false, phase = "webview-init", error = ex.Message }));
                 Application.Current.Shutdown(1);
                 return;
             }
@@ -210,17 +210,25 @@ public partial class MainWindow : Window
 """;
 
             var json = await Web.ExecuteScriptAsync(script);
+            WriteUiTestResult(json);
             using var doc = JsonDocument.Parse(json);
             var ok = doc.RootElement.TryGetProperty("ok", out var okElement) && okElement.GetBoolean();
-            Console.WriteLine("UI-SELF-TEST: " + json);
-            Console.WriteLine(ok ? "UI-SELF-TEST: PASS" : "UI-SELF-TEST: FAIL");
             Application.Current.Shutdown(ok ? 0 : 1);
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine("UI-SELF-TEST: FAIL: " + ex);
+            WriteUiTestResult(JsonSerializer.Serialize(new { ok = false, phase = "exception", error = ex.ToString() }));
             Application.Current.Shutdown(1);
         }
+    }
+
+    private static void WriteUiTestResult(string json)
+    {
+        try
+        {
+            File.WriteAllText(Path.Combine(Path.GetTempPath(), "goldbar-ui-self-test.json"), json);
+        }
+        catch { }
     }
 
     private async void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
