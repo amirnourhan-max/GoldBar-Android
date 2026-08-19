@@ -1,5 +1,6 @@
 using System.IO;
 using System.IO.Compression;
+using System.Text;
 using GoldBar.Windows.Models;
 using GoldBar.Windows.Services;
 
@@ -55,13 +56,35 @@ public static class SelfTest
             "Workbook 36.79/63.21 split matches reference");
         Check(Math.Abs(correction - 0.33377837116154296) < 1e-9, "Workbook assay-drop correction matches reference");
 
-        Check(WeightParser.Parse("ST,+ 214.373 g", 3) == 214.373, "WeightParser parses scale payload");
+        // Scale parser regression tests.
+        Check(WeightParser.Parse("ST,+ 214.373 g", 3) == 214.373, "WeightParser parses standard scale payload");
+        Check(WeightParser.Parse("ST,+    214.373 g", 3) == 214.373, "WeightParser accepts spaces after sign");
         Check(WeightParser.Parse("WT=102,500", 3) == 102.5, "WeightParser accepts comma decimal");
+        Check(WeightParser.Parse("+000214.373", 3) == 214.373, "WeightParser accepts zero-padded weight");
         Check(WeightParser.Parse("garbage", 3) is null, "WeightParser rejects nonnumeric payload");
+
+        var decoder = new ScaleFrameDecoder();
+        var fragmented1 = decoder.Push(Encoding.ASCII.GetBytes("ST,+ 214."));
+        var fragmented2 = decoder.Push(Encoding.ASCII.GetBytes("373 g\r\nWT=102,500\r\n"));
+        Check(fragmented1.Count == 0 && fragmented2.Count == 2,
+            "Scale frame decoder reconstructs fragmented and batched CR/LF packets");
+        Check(WeightParser.Parse(fragmented2[0], 3) == 214.373 && WeightParser.Parse(fragmented2[1], 3) == 102.5,
+            "Decoded scale frames preserve both weights in order");
+
+        decoder.Reset();
+        var stxEtx = decoder.Push([0x02, .. Encoding.ASCII.GetBytes("+12.345 g"), 0x03]);
+        Check(stxEtx.Count == 1 && WeightParser.Parse(stxEtx[0], 3) == 12.345,
+            "Scale frame decoder supports STX/ETX packets");
+
+        decoder.Reset();
+        decoder.Push(Encoding.ASCII.GetBytes("WT=88.125 g"));
+        var idleFrame = decoder.FlushIdle();
+        Check(idleFrame is not null && WeightParser.Parse(idleFrame, 3) == 88.125,
+            "Scale frame decoder supports unterminated idle-flush packets");
 
         var median = new MedianStabilizer(3);
         median.Push(100.0); median.Push(999.0);
-        Check(Math.Abs(median.Push(101.0) - 101.0) < 0.000001, "Median stabilizer helper rejects spike");
+        Check(Math.Abs(median.Push(101.0) - 101.0) < 0.000001, "Median helper remains available but is not used in live scale path");
 
         using (var scale = new ScaleService())
         {
@@ -72,7 +95,7 @@ public static class SelfTest
                 AutoRead = false
             }, 500).GetAwaiter().GetResult();
             Check(!diagnostic.Ok && diagnostic.Message.Contains("پیدا نشد", StringComparison.Ordinal),
-                "Scale test reports a useful missing-COM diagnostic");
+                "Scale diagnostic reports a useful missing-COM error");
         }
 
         var s = new ScaleSettings
