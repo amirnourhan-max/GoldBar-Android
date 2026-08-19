@@ -68,6 +68,12 @@ public partial class MainWindow
                 "  s5f.src = 'r5fix.js';\n" +
                 "  s5f.dataset.goldbarR5fix = '1';\n" +
                 "  document.body.appendChild(s5f);\n" +
+                "}\n" +
+                "if (!document.querySelector('script[data-goldbar-r6]')) {\n" +
+                "  const s6 = document.createElement('script');\n" +
+                "  s6.src = 'r6.js';\n" +
+                "  s6.dataset.goldbarR6 = '1';\n" +
+                "  document.body.appendChild(s6);\n" +
                 "}\n";
             await Web.ExecuteScriptAsync(script);
         }
