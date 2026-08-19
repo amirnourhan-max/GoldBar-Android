@@ -39,9 +39,9 @@ public sealed class ScaleService : IDisposable
     private int _idleGeneration;
     private bool _disposed;
 
-    // WeightReceived is retained for the existing host bridge. ReadingReceived exposes
-    // richer metadata for diagnostics and future UI work without breaking compatibility.
+    // Compatibility event used by the current WebView host.
     public event Action<double, string>? WeightReceived;
+    // Rich event retained for diagnostics/future UI without changing the old bridge contract.
     public event Action<ScaleReading>? ReadingReceived;
     public event Action<bool, string>? StatusChanged;
     public event Action<string>? Error;
@@ -69,9 +69,9 @@ public sealed class ScaleService : IDisposable
             _settings = target;
 
             var port = CreatePort(target);
+            _port = port; // assign before Open so any Open failure is still disposed by catch cleanup
             port.ErrorReceived += OnErrorReceived;
             port.Open();
-            _port = port;
 
             ResetReceiveState();
             _readCts = new CancellationTokenSource();
@@ -89,7 +89,10 @@ public sealed class ScaleService : IDisposable
             Error?.Invoke(LastError);
             return false;
         }
-        finally { _stateGate.Release(); }
+        finally
+        {
+            _stateGate.Release();
+        }
     }
 
     public void ApplySettings(ScaleSettings settings)
@@ -99,9 +102,13 @@ public sealed class ScaleService : IDisposable
         RestartAutoLoop();
     }
 
+    /// <summary>
+    /// Operator-triggered read. It clears stale receive bytes and waits for the next
+    /// valid scale frame, preventing an old auto-poll response from being captured.
+    /// </summary>
     public async Task<bool> RequestWeightAsync()
     {
-        var result = await ReadOnceAsync("manual", 1500, true).ConfigureAwait(false);
+        var result = await ReadOnceAsync("manual", 1500, clearStale: true).ConfigureAwait(false);
         return result.Ok;
     }
 
@@ -110,12 +117,16 @@ public sealed class ScaleService : IDisposable
         ThrowIfDisposed();
         var target = settings.Normalize();
         if (!SerialPort.GetPortNames().Any(x => string.Equals(x, target.Port, StringComparison.OrdinalIgnoreCase)))
-            return new(false, null, $"پورت {target.Port} در ویندوز پیدا نشد. کابل، تبدیل USB/Serial، درایور و شماره COM را بررسی کنید.");
+        {
+            return new ScaleTestResult(false, null,
+                $"پورت {target.Port} در ویندوز پیدا نشد. کابل، تبدیل USB/Serial، درایور و شماره COM را بررسی کنید.");
+        }
 
         if (!IsConnected || !SerialConfigEquals(_settings, target))
         {
             if (!await ConnectAsync(target).ConfigureAwait(false))
-                return new(false, null, string.IsNullOrWhiteSpace(LastError) ? "اتصال به ترازو ناموفق بود." : LastError);
+                return new ScaleTestResult(false, null,
+                    string.IsNullOrWhiteSpace(LastError) ? "اتصال به ترازو ناموفق بود." : LastError);
         }
         else
         {
@@ -123,15 +134,22 @@ public sealed class ScaleService : IDisposable
             RestartAutoLoop();
         }
 
-        return await ReadOnceAsync("test", Math.Clamp(timeoutMs, 500, 5000), true).ConfigureAwait(false);
+        return await ReadOnceAsync("test", Math.Clamp(timeoutMs, 500, 5000), clearStale: true)
+            .ConfigureAwait(false);
     }
 
     public async Task DisconnectAsync()
     {
         if (_disposed && _port is null) return;
         await _stateGate.WaitAsync().ConfigureAwait(false);
-        try { await DisconnectCoreAsync(true).ConfigureAwait(false); }
-        finally { _stateGate.Release(); }
+        try
+        {
+            await DisconnectCoreAsync(true).ConfigureAwait(false);
+        }
+        finally
+        {
+            _stateGate.Release();
+        }
     }
 
     public void Disconnect() => DisconnectAsync().GetAwaiter().GetResult();
@@ -141,7 +159,7 @@ public sealed class ScaleService : IDisposable
         if (_port?.IsOpen != true)
         {
             LastError = "ترازو متصل نیست. ابتدا پورت COM و تنظیمات ارتباط را بررسی کنید.";
-            return new(false, null, LastError);
+            return new ScaleTestResult(false, null, LastError);
         }
 
         var completion = new TaskCompletionSource<ScaleReading>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -149,41 +167,52 @@ public sealed class ScaleService : IDisposable
         try
         {
             if (!await SendRequestAsync(source, completion, clearStale).ConfigureAwait(false))
-                return new(false, null, LastError);
+                return new ScaleTestResult(false, null, LastError);
 
             var reading = await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs)).ConfigureAwait(false);
             sw.Stop();
-            return new(true, reading.Value,
+            return new ScaleTestResult(
+                true,
+                reading.Value,
                 $"ترازو پاسخ داد: {reading.Value:0.######} g ({sw.ElapsedMilliseconds} ms)",
-                reading.Raw, sw.ElapsedMilliseconds);
+                reading.Raw,
+                sw.ElapsedMilliseconds);
         }
         catch (TimeoutException)
         {
             RemovePending(completion);
             sw.Stop();
-            LastError = $"اتصال به {_settings.Port} برقرار است اما در {timeoutMs} ms پاسخ معتبر دریافت نشد. " +
-                        $"تنظیمات: {_settings.BaudRate} baud, {_settings.DataBits} data bits, {_settings.Parity} parity, " +
-                        $"{_settings.StopBits} stop bits, فرمان «{_settings.RequestCommand}».";
-            return new(false, null, LastError, "", sw.ElapsedMilliseconds);
+            LastError =
+                $"اتصال به {_settings.Port} برقرار است اما در {timeoutMs} ms پاسخ معتبر دریافت نشد. " +
+                $"تنظیمات: {_settings.BaudRate} baud, {_settings.DataBits} data bits, {_settings.Parity} parity, " +
+                $"{_settings.StopBits} stop bits, فرمان «{_settings.RequestCommand}».";
+            return new ScaleTestResult(false, null, LastError, "", sw.ElapsedMilliseconds);
         }
         catch (OperationCanceledException)
         {
             RemovePending(completion);
-            return new(false, null, "خواندن ترازو لغو شد.");
+            return new ScaleTestResult(false, null, "خواندن ترازو لغو شد.");
         }
         catch (Exception ex)
         {
             RemovePending(completion);
             LastError = DescribeException(ex, _settings.Port);
             Error?.Invoke(LastError);
-            return new(false, null, LastError);
+            return new ScaleTestResult(false, null, LastError);
         }
     }
 
-    private async Task<bool> SendRequestAsync(string source, TaskCompletionSource<ScaleReading>? completion, bool clearStale)
+    private async Task<bool> SendRequestAsync(
+        string source,
+        TaskCompletionSource<ScaleReading>? completion,
+        bool clearStale)
     {
         var port = _port;
-        if (port?.IsOpen != true) { LastError = "پورت ترازو باز نیست."; return false; }
+        if (port?.IsOpen != true)
+        {
+            LastError = "پورت ترازو باز نیست.";
+            return false;
+        }
 
         await _writeGate.WaitAsync().ConfigureAwait(false);
         PendingRead? request = null;
@@ -191,17 +220,20 @@ public sealed class ScaleService : IDisposable
         {
             if (clearStale)
             {
-                ClearPending(true);
+                ClearPending(cancelWaiters: true);
                 lock (_decoderGate)
                 {
                     _decoder.Reset();
                     Interlocked.Increment(ref _idleGeneration);
                 }
+
+                // The driver buffer can contain a late response from a previous auto poll.
+                // Clearing it here makes a keyboard/button read genuinely fresh.
                 try { port.DiscardInBuffer(); }
                 catch (Exception ex) when (ex is IOException or InvalidOperationException) { }
             }
 
-            request = new(source, DateTimeOffset.UtcNow, completion);
+            request = new PendingRead(source, DateTimeOffset.UtcNow, completion);
             lock (_pendingGate)
             {
                 PurgeExpiredLocked();
@@ -212,10 +244,19 @@ public sealed class ScaleService : IDisposable
             if (command.Length > 0)
             {
                 var bytes = Encoding.ASCII.GetBytes(command);
-                await port.BaseStream.WriteAsync(bytes.AsMemory()).ConfigureAwait(false);
-                await port.BaseStream.FlushAsync().ConfigureAwait(false);
+                using var writeTimeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(750));
+                await port.BaseStream.WriteAsync(bytes.AsMemory(), writeTimeout.Token).ConfigureAwait(false);
             }
+            // Empty command means a streaming scale; the next incoming valid frame
+            // completes a manual/test request without transmitting anything.
             return true;
+        }
+        catch (OperationCanceledException)
+        {
+            if (request is not null) RemovePending(request);
+            LastError = $"ارسال فرمان به {_settings.Port} بیش از حد طول کشید.";
+            Error?.Invoke(LastError);
+            return false;
         }
         catch (Exception ex)
         {
@@ -224,7 +265,10 @@ public sealed class ScaleService : IDisposable
             Error?.Invoke(LastError);
             return false;
         }
-        finally { _writeGate.Release(); }
+        finally
+        {
+            _writeGate.Release();
+        }
     }
 
     private async Task ReadLoopAsync(SerialPort port, CancellationToken ct)
@@ -263,7 +307,8 @@ public sealed class ScaleService : IDisposable
         }
 
         foreach (var frame in frames) ProcessFrame(frame);
-        if (partial) _ = FlushIdleAsync(generation, FrameIdleMs(_settings), ct);
+        if (partial)
+            _ = FlushIdleAsync(generation, FrameIdleMs(_settings), ct);
     }
 
     private async Task FlushIdleAsync(int generation, int delayMs, CancellationToken ct)
@@ -272,6 +317,7 @@ public sealed class ScaleService : IDisposable
         {
             await Task.Delay(delayMs, ct).ConfigureAwait(false);
             if (generation != Volatile.Read(ref _idleGeneration)) return;
+
             string? frame;
             lock (_decoderGate)
             {
@@ -293,11 +339,20 @@ public sealed class ScaleService : IDisposable
         lock (_pendingGate)
         {
             PurgeExpiredLocked();
-            if (_pending.Count > 0) { request = _pending[0]; _pending.RemoveAt(0); }
+            if (_pending.Count > 0)
+            {
+                request = _pending[0];
+                _pending.RemoveAt(0);
+            }
         }
 
-        var reading = new ScaleReading(value.Value, raw, request?.Source ?? "stream",
-            Interlocked.Increment(ref _sequence), DateTimeOffset.UtcNow);
+        var reading = new ScaleReading(
+            value.Value,
+            raw,
+            request?.Source ?? "stream",
+            Interlocked.Increment(ref _sequence),
+            DateTimeOffset.UtcNow);
+
         LatestReading = reading;
         WeightReceived?.Invoke(reading.Value, reading.Raw);
         ReadingReceived?.Invoke(reading);
@@ -309,12 +364,13 @@ public sealed class ScaleService : IDisposable
         try
         {
             if (string.IsNullOrEmpty(_settings.RequestCommand)) return;
+
             using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_settings.ReadIntervalMs));
             while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
             {
                 if (_port?.IsOpen != true) return;
                 if (HasPending("manual") || HasPending("test") || HasPending("auto")) continue;
-                await SendRequestAsync("auto", null, false).ConfigureAwait(false);
+                await SendRequestAsync("auto", completion: null, clearStale: false).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) { }
@@ -328,7 +384,8 @@ public sealed class ScaleService : IDisposable
     private void RestartAutoLoop()
     {
         var old = _autoCts;
-        _autoCts = null; _autoTask = null;
+        _autoCts = null;
+        _autoTask = null;
         try { old?.Cancel(); } catch { }
         old?.Dispose();
 
@@ -339,12 +396,20 @@ public sealed class ScaleService : IDisposable
 
     private async Task DisconnectCoreAsync(bool notify)
     {
-        var autoCts = _autoCts; var autoTask = _autoTask; _autoCts = null; _autoTask = null;
-        var readCts = _readCts; var readTask = _readTask; _readCts = null; _readTask = null;
+        var autoCts = _autoCts;
+        var autoTask = _autoTask;
+        _autoCts = null;
+        _autoTask = null;
         try { autoCts?.Cancel(); } catch { }
+
+        var readCts = _readCts;
+        var readTask = _readTask;
+        _readCts = null;
+        _readTask = null;
         try { readCts?.Cancel(); } catch { }
 
-        var port = _port; _port = null;
+        var port = _port;
+        _port = null;
         if (port is not null)
         {
             try { port.ErrorReceived -= OnErrorReceived; } catch { }
@@ -352,9 +417,13 @@ public sealed class ScaleService : IDisposable
             try { port.Dispose(); } catch { }
         }
 
-        if (autoTask is not null) try { await autoTask.WaitAsync(TimeSpan.FromMilliseconds(300)).ConfigureAwait(false); } catch { }
-        if (readTask is not null) try { await readTask.WaitAsync(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false); } catch { }
-        autoCts?.Dispose(); readCts?.Dispose();
+        if (autoTask is not null)
+            try { await autoTask.WaitAsync(TimeSpan.FromMilliseconds(300)).ConfigureAwait(false); } catch { }
+        if (readTask is not null)
+            try { await readTask.WaitAsync(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false); } catch { }
+
+        autoCts?.Dispose();
+        readCts?.Dispose();
         ResetReceiveState();
         if (notify) StatusChanged?.Invoke(false, "قطع");
     }
@@ -366,7 +435,7 @@ public sealed class ScaleService : IDisposable
             _decoder.Reset();
             Interlocked.Increment(ref _idleGeneration);
         }
-        ClearPending(true);
+        ClearPending(cancelWaiters: true);
     }
 
     private void OnErrorReceived(object sender, SerialErrorReceivedEventArgs e)
@@ -385,7 +454,11 @@ public sealed class ScaleService : IDisposable
 
     private bool HasPending(string source)
     {
-        lock (_pendingGate) { PurgeExpiredLocked(); return _pending.Any(x => x.Source == source); }
+        lock (_pendingGate)
+        {
+            PurgeExpiredLocked();
+            return _pending.Any(x => x.Source == source);
+        }
     }
 
     private void PurgeExpiredLocked()
@@ -403,35 +476,44 @@ public sealed class ScaleService : IDisposable
     {
         lock (_pendingGate)
         {
-            if (cancelWaiters) foreach (var x in _pending) x.Completion?.TrySetCanceled();
+            if (cancelWaiters)
+            {
+                foreach (var x in _pending)
+                    x.Completion?.TrySetCanceled();
+            }
             _pending.Clear();
         }
     }
 
     private void RemovePending(TaskCompletionSource<ScaleReading> completion)
     {
-        lock (_pendingGate) _pending.RemoveAll(x => ReferenceEquals(x.Completion, completion));
+        lock (_pendingGate)
+            _pending.RemoveAll(x => ReferenceEquals(x.Completion, completion));
     }
 
     private void RemovePending(PendingRead request)
     {
-        lock (_pendingGate) _pending.Remove(request);
+        lock (_pendingGate)
+            _pending.Remove(request);
     }
 
-    private static SerialPort CreatePort(ScaleSettings s) => new(s.Port, s.BaudRate, ParseParity(s.Parity), s.DataBits, ParseStopBits(s.StopBits))
-    {
-        Handshake = ParseHandshake(s.FlowControl),
-        Encoding = Encoding.ASCII,
-        ReadTimeout = 1000,
-        WriteTimeout = 750,
-        NewLine = "\r\n",
-        DtrEnable = false,
-        ReadBufferSize = 4096,
-        WriteBufferSize = 2048
-    };
+    private static SerialPort CreatePort(ScaleSettings s) =>
+        new(s.Port, s.BaudRate, ParseParity(s.Parity), s.DataBits, ParseStopBits(s.StopBits))
+        {
+            Handshake = ParseHandshake(s.FlowControl),
+            Encoding = Encoding.ASCII,
+            ReadTimeout = 1000,
+            WriteTimeout = 750,
+            NewLine = "\r\n",
+            DtrEnable = false,
+            ReadBufferSize = 4096,
+            WriteBufferSize = 2048
+        };
 
     private static int FrameIdleMs(ScaleSettings s)
     {
+        // Dynamic fallback for devices with no CR/LF: six character-times.
+        // For the workshop's default 2400 / 7E2 profile this is ~28 ms.
         var parityBits = s.Parity.Equals("None", StringComparison.OrdinalIgnoreCase) ? 0d : 1d;
         var bitsPerCharacter = 1d + s.DataBits + parityBits + s.StopBits;
         var charMs = 1000d * bitsPerCharacter / Math.Max(300, s.BaudRate);
@@ -439,8 +521,11 @@ public sealed class ScaleService : IDisposable
     }
 
     private static bool SerialConfigEquals(ScaleSettings a, ScaleSettings b) =>
-        a.Port.Equals(b.Port, StringComparison.OrdinalIgnoreCase) && a.BaudRate == b.BaudRate && a.DataBits == b.DataBits &&
-        a.Parity.Equals(b.Parity, StringComparison.OrdinalIgnoreCase) && Math.Abs(a.StopBits - b.StopBits) < .001 &&
+        a.Port.Equals(b.Port, StringComparison.OrdinalIgnoreCase) &&
+        a.BaudRate == b.BaudRate &&
+        a.DataBits == b.DataBits &&
+        a.Parity.Equals(b.Parity, StringComparison.OrdinalIgnoreCase) &&
+        Math.Abs(a.StopBits - b.StopBits) < .001 &&
         a.FlowControl.Equals(b.FlowControl, StringComparison.OrdinalIgnoreCase);
 
     private static string DescribeException(Exception ex, string port) => ex switch
@@ -448,14 +533,22 @@ public sealed class ScaleService : IDisposable
         UnauthorizedAccessException => $"پورت {port} در اختیار برنامه دیگری است یا دسترسی مجاز نیست.",
         IOException => $"ارتباط با {port} قطع یا نامعتبر است. کابل، تبدیل USB/Serial و درایور را بررسی کنید.",
         ArgumentException => $"تنظیمات پورت {port} معتبر نیست. Baud Rate، Data Bits، Parity و Stop Bits را بررسی کنید.",
+        ObjectDisposedException => $"ارتباط {port} در حین عملیات بسته شد.",
         InvalidOperationException => $"پورت {port} در وضعیت قابل استفاده نیست. اتصال را قطع و دوباره برقرار کنید.",
         TimeoutException => $"ترازو روی {port} در زمان مقرر پاسخ نداد.",
-        ObjectDisposedException => $"ارتباط {port} در حین عملیات بسته شد.",
         _ => $"خطای ترازو: {ex.Message}"
     };
 
-    private static Parity ParseParity(string value) => Enum.TryParse<Parity>(value, true, out var p) ? p : Parity.Even;
-    private static StopBits ParseStopBits(double value) => value switch { 1.5 => StopBits.OnePointFive, 2 => StopBits.Two, _ => StopBits.One };
+    private static Parity ParseParity(string value) =>
+        Enum.TryParse<Parity>(value, true, out var p) ? p : Parity.Even;
+
+    private static StopBits ParseStopBits(double value) => value switch
+    {
+        1.5 => StopBits.OnePointFive,
+        2 => StopBits.Two,
+        _ => StopBits.One
+    };
+
     private static Handshake ParseHandshake(string value) => value switch
     {
         "XOnXOff" => Handshake.XOnXOff,
