@@ -13,7 +13,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=Output
-OutputBaseFilename=GoldBar-Setup-v2.0.0-r12
+OutputBaseFilename=GoldBar-Setup-v2.0.0-r13
 SetupIconFile=..\Renderer\assets\GoldBar.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64
@@ -41,13 +41,10 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Name: "webview2"; Description: "Install/repair Microsoft Edge WebView2 Runtime"; GroupDescription: "Runtime:"; Flags: checkedonce
 
 [InstallDelete]
-; A fresh installer run always starts the login identity from registration. This also
-; handles upgrades from older builds whose uninstallers did not remove credentials.
 Type: files; Name: "{localappdata}\GoldBar\credentials.json"
 Type: files; Name: "{localappdata}\GoldBar\credentials.json.tmp"
 
 [UninstallDelete]
-; A normal uninstall also removes only the login credential. Scale/report settings are kept.
 Type: files; Name: "{localappdata}\GoldBar\credentials.json"
 Type: files; Name: "{localappdata}\GoldBar\credentials.json.tmp"
 
