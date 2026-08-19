@@ -104,6 +104,12 @@ public partial class MainWindow
                 "  s13.src = 'r13-cost-ui.js';\n" +
                 "  s13.dataset.goldbarR13Cost = '1';\n" +
                 "  document.body.appendChild(s13);\n" +
+                "}\n" +
+                "if (!document.querySelector('script[data-goldbar-r13-right]')) {\n" +
+                "  const s13r = document.createElement('script');\n" +
+                "  s13r.src = 'r13-right-panel.js';\n" +
+                "  s13r.dataset.goldbarR13Right = '1';\n" +
+                "  document.body.appendChild(s13r);\n" +
                 "}\n";
             await Web.ExecuteScriptAsync(script);
         }
