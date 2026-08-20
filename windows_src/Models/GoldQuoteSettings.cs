@@ -18,4 +18,11 @@ public sealed class GoldQuoteSettings
 }
 
 public sealed record GoldQuotePublicSettings(string Url, string Username, bool HasPassword);
-public sealed record GoldQuoteResult(bool Ok, decimal? Quote, string Message, DateTimeOffset? UpdatedAt = null);
+
+// Quote remains the requested green «خرید از ما» value for backwards compatibility.
+// SellQuote carries the red «فروش به ما» value for the dashboard header.
+public sealed record GoldQuoteResult(bool Ok, decimal? Quote, string Message, DateTimeOffset? UpdatedAt = null)
+{
+    public decimal? BuyQuote => Quote;
+    public decimal? SellQuote { get; init; }
+}
