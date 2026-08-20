@@ -31,3 +31,19 @@ input,textarea,select{font-family:"Noto Sans Arabic UI","Noto Sans Arabic",Tahom
 .numeric-input::-webkit-outer-spin-button,.numeric-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .numeric-input{-moz-appearance:textfield}
 @media (max-width: 900px), (max-height: 600px){.design-root{transform:scale(var(--ui-scale,.55))}}
+
+/* ===== Settings page: dedicated vertical scroll ===== */
+#pageHost.active:has(#r12MainQuoteSettings){
+  height:100%;
+  max-height:100%;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  padding-left:8px;
+  padding-bottom:34px;
+  scrollbar-gutter:stable;
+  overscroll-behavior:contain;
+}
+#pageHost.active:has(#r12MainQuoteSettings)::-webkit-scrollbar{width:8px}
+#pageHost.active:has(#r12MainQuoteSettings)::-webkit-scrollbar-track{background:rgba(255,255,255,.025);border-radius:10px}
+#pageHost.active:has(#r12MainQuoteSettings)::-webkit-scrollbar-thumb{background:rgba(242,185,28,.38);border-radius:10px;border:2px solid transparent;background-clip:padding-box}
+#pageHost.active:has(#r12MainQuoteSettings)::-webkit-scrollbar-thumb:hover{background:rgba(242,185,28,.58);background-clip:padding-box}
