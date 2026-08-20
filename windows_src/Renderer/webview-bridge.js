@@ -13,11 +13,23 @@
     }
   }
 
+  function loadQuoteV2() {
+    if (document.querySelector('script[data-goldbar-r12-quote-v2]')) return;
+    const script = document.createElement('script');
+    script.src = 'r12-quote-v2.js';
+    script.dataset.goldbarR12QuoteV2 = '1';
+    document.body.appendChild(script);
+  }
+
   function loadR12() {
-    if (document.querySelector('script[data-goldbar-r12]')) return;
+    if (document.querySelector('script[data-goldbar-r12]')) {
+      setTimeout(loadQuoteV2, 0);
+      return;
+    }
     const script = document.createElement('script');
     script.src = 'r12.js';
     script.dataset.goldbarR12 = '1';
+    script.onload = () => setTimeout(loadQuoteV2, 0);
     document.body.appendChild(script);
   }
 
