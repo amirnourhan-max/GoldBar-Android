@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using System.Windows;
 using GoldBar.Windows.Models;
@@ -52,9 +53,6 @@ public sealed class GoldQuoteService
             if (existing is > 0)
                 return new GoldQuoteResult(true, existing, "مظنه دریافت شد.", DateTimeOffset.Now);
 
-            // Login pages may be either one-step or two-step. Run the same DOM-safe
-            // login routine a few times; on a two-step page the first pass submits the
-            // username and the second pass fills/submits the password.
             for (var attempt = 0; attempt < 3; attempt++)
             {
                 await TryLoginAsync(web, settings.Username, settings.Password);
@@ -74,17 +72,11 @@ public sealed class GoldQuoteService
                 (pageState.Contains("اشتباه", StringComparison.Ordinal) || pageState.Contains("نادرست", StringComparison.Ordinal)))
                 return new GoldQuoteResult(false, null, "ورود به سایت ناموفق بود. نام کاربری و رمز را بررسی کنید.");
 
-            // The requested green 'خرید از ما' box is sometimes intentionally empty.
-            // In that case do not return zero or reuse a stale site value.
             return new GoldQuoteResult(false, null, "مظنه موجود نیست");
         }
         catch (TimeoutException)
         {
             return new GoldQuoteResult(false, null, "سایت مظنه در زمان مقرر پاسخ نداد.");
-        }
-        catch (CoreWebView2WebErrorStatusException ex)
-        {
-            return new GoldQuoteResult(false, null, "خطا در اتصال به سایت مظنه: " + ex.Message);
         }
         catch (Exception ex)
         {
@@ -185,7 +177,6 @@ public sealed class GoldQuoteService
   const matches=text.match(/\d[\d,٬،.\s]{4,}\d/g) || [];
   const numbers=matches.map(raw=>Number(raw.replace(/[^0-9]/g,''))).filter(n=>Number.isFinite(n) && n>=1000000);
   if (!numbers.length) return null;
-  // The mesghal figure in the requested green box is larger than the per-gram line.
   return Math.max(...numbers);
 })()
 """;
