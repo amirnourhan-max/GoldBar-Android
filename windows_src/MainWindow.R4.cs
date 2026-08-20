@@ -13,6 +13,8 @@ namespace GoldBar.Windows;
 public partial class MainWindow
 {
     private readonly ReportImportService _r4ReportImportService = new();
+    private readonly GoldQuoteSettingsStore _quoteStore = new();
+    private readonly GoldQuoteService _quoteService = new();
     private bool _r4MessageHooked;
     private bool _r4CloseApproved;
     private bool _r4ClosingBusy;
@@ -92,6 +94,12 @@ public partial class MainWindow
                 "  s11.src = 'r11.js';\n" +
                 "  s11.dataset.goldbarR11 = '1';\n" +
                 "  document.body.appendChild(s11);\n" +
+                "}\n" +
+                "if (!document.querySelector('script[data-goldbar-r12-quote]')) {\n" +
+                "  const sq = document.createElement('script');\n" +
+                "  sq.src = 'r12-cost-quote.js';\n" +
+                "  sq.dataset.goldbarR12Quote = '1';\n" +
+                "  document.body.appendChild(sq);\n" +
                 "}\n";
             await Web.ExecuteScriptAsync(script);
         }
@@ -115,6 +123,9 @@ public partial class MainWindow
                 "scale:test" => await R4TestScaleAsync(payload),
                 "user:get" => new { username = CurrentUser.Username },
                 "user:change-password" => R11ChangePassword(),
+                "quote:get-settings" => await QuoteGetSettingsAsync(),
+                "quote:save-settings" => await QuoteSaveSettingsAsync(payload),
+                "quote:fetch" => await QuoteFetchAsync(),
                 _ => throw new InvalidOperationException($"Unknown r4 action: {action}")
             };
             R4Reply(id, true, result, null);
@@ -123,6 +134,36 @@ public partial class MainWindow
         {
             R4Reply(id, false, null, ex.Message);
         }
+    }
+
+    private async Task<object> QuoteGetSettingsAsync()
+    {
+        var s = await _quoteStore.GetPublicAsync();
+        return new { url = s.Url, username = s.Username, hasPassword = s.HasPassword };
+    }
+
+    private async Task<object> QuoteSaveSettingsAsync(JsonElement payload)
+    {
+        var current = await _quoteStore.LoadAsync();
+        var url = payload.TryGetProperty("url", out var u) ? u.GetString() : current.Url;
+        var username = payload.TryGetProperty("username", out var n) ? n.GetString() : current.Username;
+        var password = payload.TryGetProperty("password", out var p) ? p.GetString() : null;
+        var next = new GoldQuoteSettings
+        {
+            Url = string.IsNullOrWhiteSpace(url) ? current.Url : url!,
+            Username = username ?? string.Empty,
+            Password = string.IsNullOrEmpty(password) ? current.Password : password
+        }.Normalize();
+        await _quoteStore.SaveAsync(next);
+        return new { url = next.Url, username = next.Username, hasPassword = !string.IsNullOrWhiteSpace(next.Password) };
+    }
+
+    private async Task<object> QuoteFetchAsync()
+    {
+        if (_runUiSelfTest)
+            return new GoldQuoteResult(false, null, "مظنه موجود نیست");
+        var settings = await _quoteStore.LoadAsync();
+        return await _quoteService.FetchAsync(settings);
     }
 
     private object R11ChangePassword()
