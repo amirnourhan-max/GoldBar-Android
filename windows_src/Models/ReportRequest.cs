@@ -3,6 +3,7 @@ namespace GoldBar.Windows.Models;
 public sealed class ReportRequest
 {
     public List<ReportEntry> Entries { get; set; } = [];
+    public double AssayCost { get; set; }
 }
 
 public sealed class ReportEntry
