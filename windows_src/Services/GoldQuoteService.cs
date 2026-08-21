@@ -92,7 +92,10 @@ public sealed class GoldQuoteService
         {
             web.Source = new Uri(url);
             if (await Task.WhenAny(tcs.Task, Task.Delay(timeout)) != tcs.Task) throw new TimeoutException();
-            _ = await tcs.Task;
+            // A completed-but-failed navigation means the quote site is unreachable;
+            // surface that instead of a misleading "مظنه موجود نیست" message.
+            if (!await tcs.Task.ConfigureAwait(true))
+                throw new InvalidOperationException($"دسترسی به سایت مظنه ({url}) ممکن نشد. اتصال اینترنت را بررسی کنید.");
         }
         finally { web.NavigationCompleted -= Done; }
     }

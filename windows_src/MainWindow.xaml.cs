@@ -327,6 +327,11 @@ public partial class MainWindow : Window
     private async Task<ScaleSettings> SaveSettingsAsync(JsonElement payload)
     {
         var next = payload.Deserialize<ScaleSettings>(_json) ?? ScaleSettings.Defaults();
+        // The renderer settings forms do not send these two fields; keep the stored
+        // values instead of silently resetting them to defaults.
+        if (!payload.TryGetProperty("scaleName", out var scaleName) ||
+            scaleName.ValueKind == JsonValueKind.Null || string.IsNullOrWhiteSpace(scaleName.GetString()))
+            next.ScaleName = _settings.ScaleName;
         if (!payload.TryGetProperty("reportDirectory", out var reportDir) ||
             reportDir.ValueKind == JsonValueKind.Null || string.IsNullOrWhiteSpace(reportDir.GetString()))
             next.ReportDirectory = _settings.ReportDirectory;
